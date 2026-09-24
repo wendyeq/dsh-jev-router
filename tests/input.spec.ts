@@ -2,7 +2,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, createAssistantMessage, createSystemMessage, createToolResultMessage, ToolCallId, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { ImageBlock } from '@deepseek-ai/dsh-llm'
-import { evaluationMessages } from '../src/messages.ts'
+import { evaluationMessages, fitMessages } from '../src/messages.ts'
+import type { EvaluationMessage } from '../src/jev.ts'
 import { resolveConfig } from '../src/config.ts'
 import { harness, send, TestAdapter } from './harness.ts'
 
@@ -29,6 +30,59 @@ it('evaluates only body text, excludes system/arguments/reasoning/images, and cr
 it('sends at most the latest eight eligible messages without truncating user or assistant bodies', () => {
   const messages = Array.from({ length: 10 }, (_, index) => createUserMessage({ content: [{ type: 'text', text: `body-${index}` }], source: { kind: 'user' } }))
   expect(evaluationMessages(messages, 'model').map(message => message.text)).toEqual(['body-2', 'body-3', 'body-4', 'body-5', 'body-6', 'body-7', 'body-8', 'body-9'])
+})
+
+const within = (limit: number) => (items: EvaluationMessage[]) => items.reduce((sum, item) => sum + Array.from(item.text).length, 0) <= limit
+
+it('leaves input that already fits untouched', () => {
+  const messages = [{ role: 'user' as const, text: 'short' }]
+  expect(fitMessages(messages, within(5))).toEqual({ messages, dropped: 0, omitted: 0 })
+})
+
+it('drops whole messages oldest first and never drops the latest user message', () => {
+  const messages: EvaluationMessage[] = [
+    { role: 'user', text: 'a'.repeat(10) }, { role: 'assistant', text: 'b'.repeat(10) },
+    { role: 'user', text: 'q' }, { role: 'tool', text: 'c'.repeat(5) },
+  ]
+  expect(fitMessages(messages, within(16))).toEqual({ messages: messages.slice(1), dropped: 1, omitted: 0 })
+  expect(fitMessages(messages, within(6))).toEqual({ messages: messages.slice(2), dropped: 2, omitted: 0 })
+  expect(fitMessages(messages, within(1))).toEqual({ messages: [messages[2]], dropped: 3, omitted: 0 })
+})
+
+it('keeps the last message when there is no user message', () => {
+  const messages: EvaluationMessage[] = [{ role: 'assistant', text: 'a'.repeat(10) }, { role: 'tool', text: 'tool' }]
+  expect(fitMessages(messages, within(4))).toEqual({ messages: [messages[1]], dropped: 1, omitted: 0 })
+})
+
+it('shortens only the kept message, keeping head and tail around a length marker', () => {
+  const text = 'H'.repeat(50) + 'M'.repeat(100) + 'T'.repeat(50)
+  const fitted = fitMessages([{ role: 'assistant', text: 'old' }, { role: 'user', text }], within(120))!
+  expect(fitted.dropped).toBe(1)
+  expect(fitted.messages).toHaveLength(1)
+  expect(within(120)(fitted.messages)).toBe(true)
+  const shortened = fitted.messages[0]!.text
+  expect(shortened).toContain(`omitted ${fitted.omitted} of 200 characters`)
+  expect(shortened.startsWith('H')).toBe(true)
+  expect(shortened.endsWith('T')).toBe(true)
+  expect(Array.from(shortened.replace(/\n\[.*\]\n/, '')).length).toBe(200 - fitted.omitted)
+})
+
+it('fails when not even one character of the kept message fits', () => {
+  expect(fitMessages([{ role: 'user', text: 'abc' }], () => false)).toBeUndefined()
+  expect(fitMessages([], () => false)).toBeUndefined()
+})
+
+it('an oversized paste routes and keeps routing on the following request', async () => {
+  const answers = ['1', 'high', 'low']
+  const fetcher = vi.fn<typeof fetch>(async () => Response.json({ answers: { route: { choice: answers.shift() } } })); vi.stubGlobal('fetch', fetcher)
+  const h = await harness(); cleanup.push(h.close)
+  const agent = await h.create()
+  await send(agent, '汉'.repeat(20000))
+  await send(agent, 'next step')
+  expect(h.errors).toEqual([])
+  expect(h.adapter.requests.map(request => request.model)).toEqual(['gpt-6-sol', 'gpt-6-sol'])
+  expect(fetcher).toHaveBeenCalledTimes(3)
+  for (const call of fetcher.mock.calls) expect(Buffer.byteLength(String(call[1]?.body))).toBeLessThanOrEqual(28000)
 })
 
 it('image-incompatible models are excluded before model evaluation and task descriptions remain verbatim', async () => {

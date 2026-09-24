@@ -5,6 +5,7 @@ import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import { Config, resolveConfig } from './config.ts'
 import { AUTO_EFFORT, automaticModel, JevRouter } from './router.ts'
+import { writePolicy } from './ledger.ts'
 
 export { Config }
 /** Cordis plugin identity. */
@@ -21,6 +22,7 @@ export function apply(ctx: Context, config: Config): void {
   const settings = resolveConfig(config)
   if (!settings.enabled) return
   const router = new JevRouter(ctx, settings)
+  writePolicy(settings, message => ctx.logger.warn(message))
   const accepted = new WeakMap<Agent, readonly UserMessage[]>()
   const automatic = { id: AUTO_EFFORT, name: '自动' }
   ctx.on('llm/model-selector', (provider, model) => automaticModel({ provider, model }) ? true : undefined)

@@ -8,6 +8,7 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "noImplicitAny": true,
+    "allowJs": true,
     "skipLibCheck": true,
     "types": ["node"],
     "allowImportingTsExtensions": true,

@@ -10,6 +10,9 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type { ResolvedConfig } from './config.ts'
 import { planEffortChange } from './effort.ts'
 import { evaluate, JevUnavailableError } from './jev.ts'
+import type { EvaluationRecord } from './jev.ts'
+import { Ledger } from './ledger.ts'
+import type { LedgerEntry } from './ledger.ts'
 import { evaluationMessages } from './messages.ts'
 import { RouterStore } from './store.ts'
 import type { PersistedRouter, Selection } from './types.ts'
@@ -27,12 +30,14 @@ export function automaticModel(selection: Selection): boolean {
 /** Keeps each Session's model while selecting fresh effort for each main request. */
 export class JevRouter {
   readonly store: RouterStore
+  private readonly ledger: Ledger
 
   /** @param ctx - live Harness services.
    * @param config - validated routing configuration.
    */
   constructor(private readonly ctx: Context, private readonly config: ResolvedConfig) {
     this.store = new RouterStore(config.stateDirectory)
+    this.ledger = new Ledger(config.stateDirectory, message => ctx.logger.warn(message))
   }
 
   /** Apply every own selection event, including repeated auto/jev selections.
@@ -128,6 +133,7 @@ export class JevRouter {
         }
       }
       : undefined
+    const record = this.config.ledger ? (entry: LedgerEntry) => this.ledger.append(agent.id, entry) : undefined
     if (!autoModel && !autoEffort) {
       const { reasoningEffort: _previous, ...base } = proposed
       if (selection.reasoningEffort === undefined) {
@@ -144,7 +150,11 @@ export class JevRouter {
       if (!modelMessages.some(message => message.role === 'user')) throw new Error('Jev routing failed: no user body')
       const available = await this.models(messages, signal)
       const choices = available.map((model, index) => ({ key: String(index), description: model.taskDescription, model }))
-      model = (await evaluate(this.ctx.credentials, this.config, modelMessages, choices, 'model', signal, log)).model
+      const report = record && (({ choice, ...rest }: EvaluationRecord) => {
+        const chosen = choices.find(item => item.key === choice)?.model
+        record({ ...rest, ...chosen ? { model: `${chosen.provider}/${chosen.id}` } : {} })
+      })
+      model = (await evaluate(this.ctx.credentials, this.config, modelMessages, choices, 'model', signal, log, report)).model
     } else {
       const route = autoModel ? state.pin! : selection
       model = await this.ctx.llm.resolveModelInfo(route.provider, route.model, signal)
@@ -153,10 +163,16 @@ export class JevRouter {
     if (autoEffort) {
       const descriptions = this.config.effortDescriptions[`${model.provider}/${model.id}`]
         ?? this.config.effortDescriptions[model.id]
-      const choices = (model.reasoning?.efforts ?? []).map(item => ({ key: String(item.id),
+      const efforts = model.reasoning?.efforts ?? []
+      // Adapters list efforts in escalation order, so the floor keeps it and everything after it.
+      const floor = this.config.effortFloors[`${model.provider}/${model.id}`] ?? this.config.effortFloors[model.id]
+      const start = floor === undefined ? 0 : efforts.findIndex(item => String(item.id) === floor)
+      if (start < 0) throw new Error(`Jev routing failed: effort floor ${floor} is not supported by ${model.provider}/${model.id}`)
+      const choices = efforts.slice(start).map(item => ({ key: String(item.id),
         description: descriptions?.[String(item.id)] ?? item.description ?? item.name }))
       try {
-        effort = (await evaluate(this.ctx.credentials, this.config, evaluationMessages(messages, 'effort'), choices, 'effort', signal, log)).key
+        const report = record && ((entry: EvaluationRecord) => record({ ...entry, model: `${model.provider}/${model.id}` }))
+        effort = (await evaluate(this.ctx.credentials, this.config, evaluationMessages(messages, 'effort'), choices, 'effort', signal, log, report)).key
       } catch (error) {
         if (!(error instanceof JevUnavailableError)) throw error
         signal.throwIfAborted()
@@ -166,10 +182,17 @@ export class JevRouter {
         const headerHeld = previous?.provider === model.provider && previous.model === model.id
           ? previous.reasoningEffort : undefined
         const held = wireHeld ?? headerHeld
-        const fallback = held && choices.some(choice => choice.key === held) ? held : model.reasoning?.defaultEffort
-        if (!fallback || !choices.some(choice => choice.key === fallback)) throw error
+        const offered = (key: string | undefined) => key !== undefined && choices.some(choice => choice.key === key)
+        const adapterDefault = model.reasoning?.defaultEffort
+        // A default below the floor is raised to the floor; an unsupported default still fails.
+        const belowFloor = adapterDefault !== undefined && efforts.slice(0, start).some(item => item.id === adapterDefault)
+        const [fallback, source] = offered(held) ? [held!, 'previous']
+          : offered(adapterDefault) ? [adapterDefault!, 'adapter-default']
+            : belowFloor ? [choices[0]!.key, 'floor'] : [undefined, undefined]
+        if (fallback === undefined) throw error
         effort = fallback
-        log?.(`effort 503 fallback=${effort} source=${held === effort ? 'previous' : 'adapter-default'}`)
+        log?.(`effort unavailable reason=${error.reason} fallback=${effort} source=${source}`)
+        record?.({ question: 'effort', outcome: 'fallback', model: `${model.provider}/${model.id}`, choice: effort, source: source!, reason: error.reason })
       }
     }
     const { reasoningEffort: _previous, ...base } = proposed

@@ -8,6 +8,8 @@ export const Config = z.object({
   enabled: z.boolean().default(false),
   credentialRefs: z.array(z.string().min(1)).default([]),
   logDecisions: z.boolean().default(false),
+  /** Append each evaluation's outcome, tokens and gateway cost to `<stateDirectory>/<session>.ledger.jsonl`. */
+  ledger: z.boolean().default(true),
   diagnosticLogFile: z.string().refine(isAbsolute, 'diagnosticLogFile must be absolute').optional(),
   stateDirectory: z.string().refine(isAbsolute, 'stateDirectory must be absolute').default(defaultStateDirectory),
   timeoutMs: z.number().int().positive().max(5000).default(5000),
@@ -19,6 +21,8 @@ export const Config = z.object({
   }).strict()).refine(items => new Set(items.map(item => `${item.provider ?? ''}/${item.model}`)).size === items.length,
     'automatic routes must be unique').default([]),
   effortDescriptions: z.record(z.string(), z.record(z.string(), z.string().min(1))).default({}),
+  /** Lowest automatic effort per `provider/model` or model ID; explicit user efforts are not affected. */
+  effortFloors: z.record(z.string(), z.string().min(1)).default({}),
 }).strict()
 
 /** Optional inputs accepted by apply(). */
