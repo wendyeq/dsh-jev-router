@@ -1,0 +1,5 @@
+- insert:
+    - id: dsh-jev-router
+      name: dsh-jev-router
+      config:
+        enabled: false

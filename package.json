@@ -1,0 +1,35 @@
+{
+  "name": "dsh-jev-router",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Optional session-pinned Jev model routing for DeepSeek Harness",
+  "type": "module",
+  "engines": { "node": ">=22.19.0" },
+  "exports": { ".": "./dist/index.js" },
+  "files": ["dist/index.js", "cordis.patch.yml", "examples/jev-policy.patch.yml", "README.md", "README.zh.md"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-agent": "*",
+    "@deepseek-ai/dsh-api-session-controller": "*",
+    "@deepseek-ai/dsh-credentials": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-session": "*",
+    "@deepseek-ai/dsh-system-prompt": "*"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "tsdown": "^0.15.0",
+    "typescript": "^5.9.2",
+    "vite-tsconfig-paths": "^6.0.0",
+    "vitest": "^4.1.8"
+  }
+}
