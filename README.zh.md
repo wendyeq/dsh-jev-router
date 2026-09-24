@@ -6,6 +6,8 @@
 
 上游 DeepSeek Harness 没有本插件使用的选择器事件和 `configuration-update` 内容块。请配合 [wendyeq/deepseek-harness](https://github.com/wendyeq/deepseek-harness) 的 `local/jev-host` 分支，从 `737a4c131e` 或其后续提交运行。测试从旁边的 `../deepseek-harness` 检出导入。
 
+真实宿主安装、升级回退、验收矩阵与失败归因见 [P0 安装与验收](docs/p0-acceptance.md)。本地测试不代替需要 Gateway 凭证的真实验收。
+
 ## 选择
 
 模型列表增加 `auto/jev`，推理强度列表增加「自动」（内部值 `auto/jev`）。第一次主请求先让 Jev 在已配置且已注册的模型路由中选模型，再从该模型支持的档位里选择最低够用的推理强度。两次成功后，会话模型保持不变；后续主请求独立选择强度。再次选择 `auto/jev` 会让原有会话模型作废；只修改任务说明不会。指定模型保持不变，无论其强度是自动还是指定。子会话沿用父会话的具体模型和强度选择方式；父会话尚未选定自动模型时，子会话路由失败。会话模型和选择方式保存在每个 Session 的原子 sidecar，恢复后保留。评估出的强度不是用户选择。一条模型路由的第一次强度是请求级设档（Responses 用 `reasoning.effort`，Chat Completions 用 `reasoning_effort`），并写入 sidecar。同一路由之后的改档会在下一条用户消息前追加一条 `configuration_update`，不改写请求级强度，这样前缀缓存仍能命中。新档位一直生效，直到下一条更新。两条更新不会相邻；压缩删掉上一条之后，下一次请求会补一条新的。Chat Completions 没有 `configuration_update`，之后的改档会作为新的 `reasoning_effort` 发送。切换具体模型会开启新的缓存上下文，并重新设档。首次主请求前会将自动强度的选择意图记录为 `model/selection`，避免 UI 将实际请求强度误当作用户的固定选择；旧会话在下一次主请求时补记。
