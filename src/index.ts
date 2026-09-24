@@ -71,8 +71,10 @@ export function apply(ctx: Context, config: Config): void {
     }
     accepted.set(agent, decision.messages)
     const saved = router.store.read(agent.id)
-    const initial = agent.options.reasoningEffort === AUTO_EFFORT && agent.options.provider && agent.options.model
-      ? { provider: agent.options.provider, model: agent.options.model, reasoningEffort: AUTO_EFFORT }
+    const { provider, model, reasoningEffort } = agent.options
+    // A Session created on auto/jev carries no effort in its options; its intent is still automatic effort.
+    const initial = provider && model && (reasoningEffort === AUTO_EFFORT || automaticModel({ provider, model }))
+      ? { provider, model, reasoningEffort: AUTO_EFFORT }
       : undefined
     const selection = saved?.selection.reasoningEffort === AUTO_EFFORT
       ? { provider: saved.selection.provider, model: saved.selection.model, reasoningEffort: AUTO_EFFORT }

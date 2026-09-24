@@ -48,6 +48,24 @@ it('keeps initial automatic effort as Session selection after a later routing fa
   expect(agent.session.snapshotEvents().filter(event => event.type === 'model/selection')).toHaveLength(1)
 })
 
+it('records auto/jev as the Session selection when the Session was created on auto/jev', async () => {
+  const answers = ['0', 'low', 'medium']
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Response.json({ answers: { route: { choice: answers.shift() } } })))
+  const h = await harness(); cleanup.push(h.close)
+  installModelSelectionProjection(h.ctx)
+  const agent = await h.create('created-auto')
+  expect(agent.options).not.toHaveProperty('reasoningEffort')
+  await send(agent)
+  await send(agent)
+  expect(h.errors).toEqual([])
+  expect(agent.session.requestHeader()?.config).toMatchObject({ model: 'gpt-6-luna' })
+  expect(h.ctx.sessionProjections.stateOf(agent.session, 'modelSelection')?.pending)
+    .toMatchObject({ provider: 'auto', model: 'jev', reasoningEffort: 'auto/jev' })
+  expect(agent.session.snapshotEvents().filter(event => event.type === 'model/selection')).toHaveLength(1)
+  expect(h.adapter.requests.map(request => request.reasoningEffort)).toEqual(['low', 'low'])
+  expect(h.adapter.requests.map(request => configurationUpdates(request.messages))).toEqual([[], ['medium']])
+})
+
 it('restores automatic effort intent for an older Session without a selection event', async () => {
   const first = await harness(); cleanup.push(first.close)
   const agent = await first.create('old-auto', { provider: 'test', model: 'gpt-6-sol', reasoningEffort: ReasoningEffortId('low') })
