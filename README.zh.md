@@ -24,6 +24,8 @@
 
 插件在状态目录为每个 Session 追加一份 `<session-id>.ledger.jsonl`（权限 `0600`）：每次 Jev 评估记录问题类型、结果、选中的模型或档位、尝试次数、耗时、token 数和网关报告的费用，降级另记一条；不记录正文、请求体或凭证。写入失败只告警，不中断生成。设 `ledger: false` 可关闭。启动时还会把实际生效的候选模型、档位说明和下限写到 `_policy.json`。
 
+成功评估还会记录 Gateway 返回的选项概率 `probabilities`；`probabilityStatus` 区分 `available`、`missing` 和 `invalid`。只接受覆盖全部候选项、数值在 0–1 内且总和允许两位小数舍入误差的分布，不重新归一化。缺失或异常概率不影响选档，也不触发重试。旧账本没有概率时视为缺失；单选项跳过评估不生成概率。`show` 的 `probabilityDecisions` 展示各次成功评估的分布、最高项、次高项及概率差 `margin`。这些数据只用于观察，不代表任务成功率，不自动升降档。
+
 仓库附带 skill `jev-router-inspect`，读取上述文件和 Harness 会话日志，查看会话选择、档位分布、降级、失败原因和费用，并可按需问 Jev「保持当前模型，还是另开会话换一个」。只给建议，不会切换模型。安装到 `~/.agents/skills`（dsh 也会读取这个目录）：
 
 ```bash

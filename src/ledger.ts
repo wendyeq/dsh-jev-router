@@ -17,6 +17,9 @@ export interface LedgerEntry {
   readonly model?: string
   /** Effort key; absent on model records, where `model` is the choice. */
   readonly choice?: string
+  /** Optional diagnostic distribution; never used to override routing. */
+  readonly probabilities?: Record<string, number>
+  readonly probabilityStatus?: 'available' | 'missing' | 'invalid'
   /** Fallback source: `previous`, `adapter-default`, or `floor`. */
   readonly source?: string
   /** Short failure label such as `HTTP 503`, `timeout`, or `invalid-answer`; never a response body. */

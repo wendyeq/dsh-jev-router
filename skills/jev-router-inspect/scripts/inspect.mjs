@@ -23,7 +23,8 @@ const TRANSIENT = new Set([408, 429, 500, 502, 503, 504])
  * @typedef {{ version: 1, selection: Selection, afterSeq: number, pin: { provider: string, model: string, selectedAt: number } | null,
  *   effortWire?: { provider: string, model: string, requestEffort: string, effectiveEffort: string } }} Sidecar
  * @typedef {{ time: string, question: 'model' | 'effort', outcome: string, model?: string, choice?: string, source?: string, reason?: string,
- *   attempts?: number, durationMs?: number, inputTokens?: number, outputTokens?: number, cost?: number, dropped?: number, omittedChars?: number }} LedgerEntry
+ *   attempts?: number, durationMs?: number, inputTokens?: number, outputTokens?: number, cost?: number, dropped?: number, omittedChars?: number,
+ *   probabilities?: Record<string, number>, probabilityStatus?: 'available' | 'missing' | 'invalid' }} LedgerEntry
  * @typedef {{ role: 'user' | 'assistant', text: string }} Message
  * @typedef {{ input?: number | undefined, output?: number | undefined }} Prices USD per million tokens.
  */
@@ -135,6 +136,17 @@ export function summarizeLedger(entries, prices = {}) {
     lastAt: entries.at(-1)?.time ?? null,
     outcomes,
     effortsByModel: efforts,
+    probabilityDecisions: entries.filter(entry => entry.outcome === 'chosen').map(entry => {
+      const ranked = Object.entries(entry.probabilities ?? {}).sort((a, b) => b[1] - a[1])
+      return {
+        time: entry.time, question: entry.question, model: entry.model, choice: entry.choice ?? entry.model,
+        status: entry.probabilityStatus ?? 'missing',
+        probabilities: entry.probabilities ?? null,
+        top: ranked[0]?.[0] ?? null,
+        runnerUp: ranked[1]?.[0] ?? null,
+        margin: ranked[0] && ranked[1] ? Number((ranked[0][1] - ranked[1][1]).toFixed(8)) : null,
+      }
+    }),
     fallbackSources,
     failureReasons: reasons,
     shortenedEvaluations: shortened,

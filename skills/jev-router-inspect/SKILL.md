@@ -36,3 +36,4 @@ node scripts/inspect.mjs check <session-id|latest>    # 问 Jev：保持当前�
 - `effortsByModel` 是每次主请求实际用的档位分布，包括降级（`fallbackSources`）。
 - `failureReasons` 里 `HTTP 5xx`、`timeout`、`network` 是临时故障；`credential`、`body-limit`、`invalid-answer` 是配置或数据问题，建议用户查配置。
 - `shortenedEvaluations` 是因超出 28,000 字节而丢弃旧消息或截断的评估次数。
+- `probabilityDecisions` 展示成功评估的选项概率、最高项 `top`、次高项 `runnerUp` 和概率差 `margin`。`status` 为 `available` / `missing` / `invalid`；旧记录视为缺失，单选项与降级不计入。概率差仅用于观察选项区分程度，不是任务成功率，也不是自动升降档的依据。

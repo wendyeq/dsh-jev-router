@@ -35,6 +35,8 @@ export interface EvaluationRecord {
   readonly outcome: 'chosen' | 'single' | 'unavailable' | 'failed'
   /** Offered criteria key. */
   readonly choice?: string
+  readonly probabilities?: Record<string, number>
+  readonly probabilityStatus?: 'available' | 'missing' | 'invalid'
   /** Short failure label; never a response body. */
   readonly reason?: string
   readonly attempts: number
@@ -54,6 +56,27 @@ interface Tally {
   cost?: number
   dropped?: number
   omittedChars?: number
+  probabilities?: Record<string, number>
+  probabilityStatus?: 'available' | 'missing' | 'invalid'
+}
+
+/** Optional telemetry never changes the route. Accept rounded distributions with exactly the offered keys. */
+function recordProbabilities(json: unknown, choices: readonly Choice[], tally: Tally): void {
+  const parsed = z.object({ answers: z.object({ route: z.object({ probabilities: z.unknown().optional() }) }) }).safeParse(json)
+  const raw = parsed.success ? parsed.data.answers.route.probabilities : undefined
+  if (raw === undefined) { tally.probabilityStatus = 'missing'; return }
+  const distribution = z.record(z.string(), z.number().finite().min(0).max(1)).safeParse(raw)
+  if (distribution.success) {
+    const values = distribution.data
+    const sum = Object.values(values).reduce((a, b) => a + b, 0)
+    if (Object.keys(values).length === choices.length && choices.every(item => Object.hasOwn(values, item.key))
+      && sum > 0 && Math.abs(sum - 1) <= choices.length * 0.005 + 1e-9) {
+      tally.probabilities = values
+      tally.probabilityStatus = 'available'
+      return
+    }
+  }
+  tally.probabilityStatus = 'invalid'
 }
 
 /** HTTP statuses treated as temporary: request timeout, rate limit, and server-side failures. */
@@ -245,6 +268,7 @@ async function ask<T extends Choice>(
         const parsed = answer.parse(json)
         const chosen = choices.find(item => item.key === parsed.answers.route.choice)
         if (!chosen) throw new Error('Jev selected outside the offered criteria')
+        recordProbabilities(json, choices, tally)
         log?.(`${question} choice=${chosen.key}`)
         return chosen
       })
