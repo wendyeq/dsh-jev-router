@@ -1,9 +1,9 @@
 /** Per-session decision and usage records for later inspection; never conversation text or credentials. */
-import { appendFileSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { randomUUID } from 'node:crypto'
+import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { ResolvedConfig } from './config.ts'
+import { replacePrivateFile } from './store.ts'
 
 /** File name of the effective routing policy inside the state directory. */
 export const POLICY_FILE = '_policy.json'
@@ -71,20 +71,15 @@ export class Ledger {
  */
 export function writePolicy(config: ResolvedConfig, warn: (message: string) => void): void {
   const file = join(config.stateDirectory, POLICY_FILE)
-  const temporary = `${file}.${randomUUID()}.tmp`
   try {
-    mkdirSync(config.stateDirectory, { recursive: true, mode: 0o700 })
-    writeFileSync(temporary, JSON.stringify({
+    replacePrivateFile(config.stateDirectory, file, JSON.stringify({
       version: 1,
       writtenAt: new Date().toISOString(),
       candidates: config.candidates,
       effortDescriptions: config.effortDescriptions,
       effortFloors: config.effortFloors,
-    }, null, 2) + '\n', { flag: 'wx', mode: 0o600 })
-    renameSync(temporary, file)
+    }, null, 2) + '\n')
   } catch (_error) {
     warn('dsh-jev-router: policy snapshot write failed')
-  } finally {
-    rmSync(temporary, { force: true })
   }
 }

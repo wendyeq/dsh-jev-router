@@ -42,6 +42,18 @@ function readJson(file) {
   return JSON.parse(readFileSync(file, 'utf8'))
 }
 
+/** @param {string} text @returns {any[]} complete JSON lines; a torn final line is skipped */
+function jsonLines(text) {
+  return text.split('\n').filter(Boolean).flatMap(line => {
+    try { return [JSON.parse(line)] } catch { return [] }
+  })
+}
+
+/** @param {Selection} selection */
+function automaticModel(selection) {
+  return selection.provider === 'auto' && selection.model === 'jev'
+}
+
 /** @param {string} stateDir @returns {Policy | undefined} */
 export function readPolicy(stateDir) {
   const file = join(stateDir, '_policy.json')
@@ -66,9 +78,7 @@ export function listSidecars(stateDir) {
 export function readLedger(stateDir, id) {
   const file = join(stateDir, `${encodeURIComponent(id)}.ledger.jsonl`)
   if (!existsSync(file)) return []
-  return readFileSync(file, 'utf8').split('\n').filter(Boolean).flatMap(line => {
-    try { return [JSON.parse(line)] } catch { return [] } // a torn final line from a crash is skipped
-  })
+  return jsonLines(readFileSync(file, 'utf8'))
 }
 
 /** @param {string} stateDir @param {string} idOrLatest */
@@ -81,22 +91,38 @@ export function resolveSession(stateDir, idOrLatest) {
 
 /** @param {Sidecar} sidecar @returns {string | undefined} concrete provider/model the session is using */
 export function currentModel(sidecar) {
-  const automatic = sidecar.selection.provider === 'auto' && sidecar.selection.model === 'jev'
-  const route = automatic ? sidecar.pin : sidecar.selection
+  const route = automaticModel(sidecar.selection) ? sidecar.pin : sidecar.selection
   return route ? `${route.provider}/${route.model}` : undefined
 }
 
 /** @param {Sidecar} sidecar */
 export function describeSelection(sidecar) {
-  const automaticModel = sidecar.selection.provider === 'auto' && sidecar.selection.model === 'jev'
-  const automaticEffort = automaticModel || sidecar.selection.reasoningEffort === 'auto/jev'
+  const automatic = automaticModel(sidecar.selection)
+  const automaticEffort = automatic || sidecar.selection.reasoningEffort === 'auto/jev'
   return {
     model: currentModel(sidecar) ?? null,
-    modelMode: automaticModel ? (sidecar.pin ? 'auto (pinned)' : 'auto (not yet chosen)') : 'specified',
+    modelMode: automatic ? (sidecar.pin ? 'auto (pinned)' : 'auto (not yet chosen)') : 'specified',
     pinnedAt: sidecar.pin ? new Date(sidecar.pin.selectedAt).toISOString() : null,
     effortMode: automaticEffort ? 'auto' : (sidecar.selection.reasoningEffort ? 'specified' : 'provider default'),
     effort: sidecar.effortWire?.effectiveEffort ?? (automaticEffort ? null : sidecar.selection.reasoningEffort ?? null),
   }
+}
+
+/** @param {LedgerEntry[]} entries */
+function probabilityDecisions(entries) {
+  return entries.filter(entry => entry.outcome === 'chosen').map(entry => {
+    const ranked = Object.entries(entry.probabilities ?? {}).sort((a, b) => b[1] - a[1])
+    const top = ranked[0]
+    const runnerUp = ranked[1]
+    return {
+      time: entry.time, question: entry.question, model: entry.model, choice: entry.choice ?? entry.model,
+      status: entry.probabilityStatus ?? 'missing',
+      probabilities: entry.probabilities ?? null,
+      top: top?.[0] ?? null,
+      runnerUp: runnerUp?.[0] ?? null,
+      margin: top && runnerUp ? Number((top[1] - runnerUp[1]).toFixed(8)) : null,
+    }
+  })
 }
 
 /**
@@ -136,17 +162,7 @@ export function summarizeLedger(entries, prices = {}) {
     lastAt: entries.at(-1)?.time ?? null,
     outcomes,
     effortsByModel: efforts,
-    probabilityDecisions: entries.filter(entry => entry.outcome === 'chosen').map(entry => {
-      const ranked = Object.entries(entry.probabilities ?? {}).sort((a, b) => b[1] - a[1])
-      return {
-        time: entry.time, question: entry.question, model: entry.model, choice: entry.choice ?? entry.model,
-        status: entry.probabilityStatus ?? 'missing',
-        probabilities: entry.probabilities ?? null,
-        top: ranked[0]?.[0] ?? null,
-        runnerUp: ranked[1]?.[0] ?? null,
-        margin: ranked[0] && ranked[1] ? Number((ranked[0][1] - ranked[1][1]).toFixed(8)) : null,
-      }
-    }),
+    probabilityDecisions: probabilityDecisions(entries),
     fallbackSources,
     failureReasons: reasons,
     shortenedEvaluations: shortened,
@@ -189,9 +205,7 @@ export function readSessionEvents(file) {
     if (result.error || result.status !== 0) throw new Error('reading a compressed session log requires the zstd command')
     text = result.stdout
   } else text = readFileSync(file, 'utf8')
-  return text.split('\n').filter(Boolean).flatMap(line => {
-    try { return [JSON.parse(line)] } catch { return [] }
-  })
+  return jsonLines(text)
 }
 
 /** @param {any[]} events @returns {Message[]} latest user/assistant body text, as the router's model question sees it */
@@ -210,6 +224,7 @@ export function recentMessages(events) {
 
 /**
  * Drop oldest messages, then keep head and tail of the latest user message, until `fits` accepts.
+ * Same steps as `fitMessages` in src/messages.ts; this script stays installable without that module.
  * @param {Message[]} messages @param {(messages: Message[]) => boolean} fits
  */
 export function fit(messages, fits) {

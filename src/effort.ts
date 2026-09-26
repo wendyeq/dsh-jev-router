@@ -1,5 +1,6 @@
 /** Request-level effort versus a later configuration update. */
 import type { RequestMessage } from '@deepseek-ai/dsh-llm'
+import { sameRoute } from './types.ts'
 import type { EffortWire } from './types.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
@@ -33,12 +34,18 @@ function updateOf(message: RequestMessage | undefined, route: Route): string | u
   return block.effort
 }
 
+/** Effort from the latest configuration update for this route, if one was recorded. */
+function latestUpdate(history: readonly RequestMessage[], route: Route): string | undefined {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const update = updateOf(history[index], route)
+    if (update !== undefined) return update
+  }
+  return undefined
+}
+
 /** True when another update can be inserted without sitting directly beside the previous one. */
 function separated(history: readonly RequestMessage[], route: Route): boolean {
-  let last = -1
-  for (let index = 0; index < history.length; index += 1) {
-    if (updateOf(history[index], route) !== undefined) last = index
-  }
+  const last = history.findLastIndex(message => updateOf(message, route) !== undefined)
   if (last < 0) return true
   return history.slice(last + 1).some(message => updateOf(message, route) === undefined && message.content.every(block => block.type !== 'configuration-update'))
 }
@@ -60,19 +67,18 @@ export function planEffortChange(
   effort: string,
   history: readonly RequestMessage[],
 ): EffortChange {
-  let recorded: string | undefined
-  for (const message of history) {
-    const update = updateOf(message, route)
-    if (update !== undefined) recorded = update
-  }
-  const same = wire?.provider === route.provider && wire.model === route.model
-  if (!same) {
-    const restated = recorded !== undefined && recorded !== effort && separated(history, route)
-    const effective = restated || recorded === undefined || recorded === effort ? effort : recorded
+  const recorded = latestUpdate(history, route)
+  if (!wire || !sameRoute(wire, route)) {
+    let effective = effort
+    let append = false
+    if (recorded !== undefined && recorded !== effort) {
+      if (separated(history, route)) append = true
+      else effective = recorded
+    }
     return {
       requestEffort: effort,
       effectiveEffort: effective,
-      append: restated,
+      append,
       wire: { ...route, requestEffort: effort, effectiveEffort: effective },
     }
   }

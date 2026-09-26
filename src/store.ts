@@ -27,6 +27,18 @@ export function defaultStateDirectory(): string {
   return join(homedir(), '.dsh-jev-router', 'sessions')
 }
 
+/** Replace one private file by rename. The directory is `0700` and the file is `0600`. */
+export function replacePrivateFile(directory: string, file: string, body: string): void {
+  mkdirSync(directory, { recursive: true, mode: 0o700 })
+  const temporary = `${file}.${randomUUID()}.tmp`
+  try {
+    writeFileSync(temporary, body, { flag: 'wx', mode: 0o600 })
+    renameSync(temporary, file)
+  } finally {
+    rmSync(temporary, { force: true })
+  }
+}
+
 /** One sidecar per Session. The wire baseline is not the user's effort selection. */
 export class RouterStore {
   private readonly cache = new Map<SessionId, PersistedRouter>()
@@ -56,15 +68,7 @@ export class RouterStore {
    * @param next - complete replacement; published to memory only after rename succeeds.
    */
   write(sessionId: SessionId, next: PersistedRouter): void {
-    mkdirSync(this.directory, { recursive: true, mode: 0o700 })
-    const file = this.file(sessionId)
-    const temporary = `${file}.${randomUUID()}.tmp`
-    try {
-      writeFileSync(temporary, JSON.stringify(next) + '\n', { flag: 'wx', mode: 0o600 })
-      renameSync(temporary, file)
-    } finally {
-      rmSync(temporary, { force: true })
-    }
+    replacePrivateFile(this.directory, this.file(sessionId), JSON.stringify(next) + '\n')
     this.cache.set(sessionId, next)
   }
 

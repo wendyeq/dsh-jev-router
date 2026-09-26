@@ -37,6 +37,7 @@ function omission(omitted: number, total: number): string {
 
 /**
  * Shrink evaluation input until `fits` accepts it.
+ * The installed inspect skill repeats this algorithm because it cannot import `src`.
  * First drop whole messages oldest first, never the latest user message (or, without one, the last message).
  * If that message alone is still too large, keep its head and tail and mark the omitted middle.
  * @param messages - output of {@link evaluationMessages}.
@@ -47,10 +48,8 @@ export function fitMessages(messages: readonly EvaluationMessage[], fits: (messa
   const kept = [...messages]
   if (fits(kept)) return { messages: kept, dropped: 0, omitted: 0 }
   if (kept.length === 0) return undefined
-  let anchor = kept.length - 1
-  for (let index = kept.length - 1; index >= 0; index -= 1) {
-    if (kept[index]!.role === 'user') { anchor = index; break }
-  }
+  let anchor = kept.findLastIndex(message => message.role === 'user')
+  if (anchor < 0) anchor = kept.length - 1
   let dropped = 0
   while (kept.length > 1) {
     const index = anchor === 0 ? 1 : 0

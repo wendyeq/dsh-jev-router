@@ -60,23 +60,34 @@ interface Tally {
   probabilityStatus?: 'available' | 'missing' | 'invalid'
 }
 
-/** Optional telemetry never changes the route. Accept rounded distributions with exactly the offered keys. */
+/** Rounded distribution over exactly the offered keys. Extra, missing, or out-of-range values are rejected. */
+function acceptedProbabilities(raw: unknown, choices: readonly Choice[]): Record<string, number> | undefined {
+  const distribution = z.record(z.string(), z.number().finite().min(0).max(1)).safeParse(raw)
+  if (!distribution.success) return undefined
+  const values = distribution.data
+  const sameKeys = Object.keys(values).length === choices.length && choices.every(item => Object.hasOwn(values, item.key))
+  if (!sameKeys) return undefined
+  const sum = Object.values(values).reduce((total, value) => total + value, 0)
+  const tolerance = choices.length * 0.005 + 1e-9
+  if (sum <= 0 || Math.abs(sum - 1) > tolerance) return undefined
+  return values
+}
+
+/** Optional telemetry never changes the route. */
 function recordProbabilities(json: unknown, choices: readonly Choice[], tally: Tally): void {
   const parsed = z.object({ answers: z.object({ route: z.object({ probabilities: z.unknown().optional() }) }) }).safeParse(json)
   const raw = parsed.success ? parsed.data.answers.route.probabilities : undefined
-  if (raw === undefined) { tally.probabilityStatus = 'missing'; return }
-  const distribution = z.record(z.string(), z.number().finite().min(0).max(1)).safeParse(raw)
-  if (distribution.success) {
-    const values = distribution.data
-    const sum = Object.values(values).reduce((a, b) => a + b, 0)
-    if (Object.keys(values).length === choices.length && choices.every(item => Object.hasOwn(values, item.key))
-      && sum > 0 && Math.abs(sum - 1) <= choices.length * 0.005 + 1e-9) {
-      tally.probabilities = values
-      tally.probabilityStatus = 'available'
-      return
-    }
+  if (raw === undefined) {
+    tally.probabilityStatus = 'missing'
+    return
   }
-  tally.probabilityStatus = 'invalid'
+  const values = acceptedProbabilities(raw, choices)
+  if (!values) {
+    tally.probabilityStatus = 'invalid'
+    return
+  }
+  tally.probabilities = values
+  tally.probabilityStatus = 'available'
 }
 
 /** HTTP statuses treated as temporary: request timeout, rate limit, and server-side failures. */
@@ -228,23 +239,25 @@ async function ask<T extends Choice>(
   }
   const body = build(fitted.messages)
 
-  const progress: { key?: string | undefined; reachedJev: boolean } = { reachedJev: false }
+  let key: string | undefined
+  let reachedJev = false
   let last = ''
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
     if (attempt > 1) await delay(1000, signal)
     const started = Date.now()
-    progress.reachedJev = false
+    reachedJev = false
     try {
       // The first attempt's time limit also covers credential lookup, so the ceiling stays 3 × timeoutMs + 2 s.
       return await bounded(signal, config.timeoutMs, async attemptSignal => {
-        for (const ref of progress.key === undefined ? config.credentialRefs : []) {
-          progress.key = (await credentials.resolve(credentialRef(ref)))?.value
-          attemptSignal.throwIfAborted()
-          if (progress.key) break
+        if (key === undefined) {
+          for (const ref of config.credentialRefs) {
+            key = (await credentials.resolve(credentialRef(ref)))?.value
+            attemptSignal.throwIfAborted()
+            if (key) break
+          }
         }
-        const key = progress.key
         if (!key) throw new Error('Jev routing failed: credential unavailable')
-        progress.reachedJev = true
+        reachedJev = true
         tally.attempts = attempt
         let response: Response
         try {
@@ -275,7 +288,7 @@ async function ask<T extends Choice>(
     } catch (error) {
       if (signal.aborted) throw signal.reason
       // A stalled credential store is local, not Jev jitter; do not spend retries on it.
-      const jevTimeout = error instanceof AttemptTimeout && progress.reachedJev
+      const jevTimeout = error instanceof AttemptTimeout && reachedJev
       if (!(error instanceof TransientFailure) && !jevTimeout) throw error
       last = error instanceof TransientFailure ? error.message : 'timeout'
       if (!last.startsWith('HTTP')) log?.(`${question} attempt=${attempt}/${ATTEMPTS} error=${last} durationMs=${Date.now() - started}`)

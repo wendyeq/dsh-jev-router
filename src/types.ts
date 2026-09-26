@@ -25,6 +25,14 @@ export interface EffortWire {
   readonly effectiveEffort: string
 }
 
+/** True when both sides name the same provider and model. A missing side does not match. */
+export function sameRoute(
+  left: { readonly provider: string; readonly model: string } | null | undefined,
+  right: { readonly provider: string; readonly model: string },
+): boolean {
+  return left?.provider === right.provider && left.model === right.model
+}
+
 /** Child sessions inherit a concrete model and the parent's effort selection method. */
 export interface PersistedRouter {
   readonly version: 1
