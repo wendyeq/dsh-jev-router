@@ -1,5 +1,6 @@
 ---
-name: jev-router-inspect
+name: dsh-jev-router-inspect
+disable-model-invocation: true
 description: 查看 dsh-jev-router 的会话选择、推理强度记录、Jev 评估用量与费用，并按需判断是否该另开会话换模型。Use when asked about auto/jev routing, Jev cost, or whether a DeepSeek Harness session should switch models.
 ---
 

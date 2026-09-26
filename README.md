@@ -24,10 +24,10 @@ Only main requests ask Jev. Title and compaction requests use the concrete Sessi
 
 The plugin appends a private `<session-id>.ledger.jsonl` (mode `0600`) per Session in the state directory. Each Jev evaluation records its question, outcome, chosen model or effort, attempts, duration, token counts, and gateway-reported cost; each effort fallback gets its own record. It never records conversation text, request bodies, or credentials. Write errors warn without failing generation. Set `ledger: false` to disable it. On start, the plugin also writes the effective candidates, effort descriptions, and floors to `_policy.json`.
 
-The repository ships the `jev-router-inspect` skill. It reads these files and the Harness session log to show a Session's selection, effort distribution, fallbacks, failure reasons, and cost, and can ask Jev on demand whether to keep the current model or open a new session with another. It only suggests; it never switches models. Install it into `~/.agents/skills` (which dsh also reads):
+The repository ships the `dsh-jev-router-inspect` skill. It reads these files and the Harness session log to show a Session's selection, effort distribution, fallbacks, failure reasons, and cost, and can ask Jev on demand whether to keep the current model or open a new session with another. It only suggests; it never switches models. Install it into `~/.agents/skills` (which dsh also reads):
 
 ```bash
-npx skills add wendyeq/dsh-jev-router --skill jev-router-inspect -g
+npx skills add wendyeq/dsh-jev-router --skill dsh-jev-router-inspect -g
 ```
 
 The on-demand switch check needs `AI_GATEWAY_API_KEY` and costs one evaluation; reading compressed session logs needs the `zstd` command.

@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { evaluate } from '../src/jev.ts'
 import type { EvaluationRecord } from '../src/jev.ts'
 import { resolveConfig } from '../src/config.ts'
-import { summarizeLedger } from '../skills/jev-router-inspect/scripts/inspect.mjs'
+import { summarizeLedger } from '../skills/dsh-jev-router-inspect/scripts/inspect.mjs'
 
 const config = resolveConfig({ enabled: true, credentialRefs: ['test'], candidates: [{ model: 'fixture', description: 'Fixture' }] })
 const choices = [{ key: 'low', description: 'Low' }, { key: 'high', description: 'High' }]

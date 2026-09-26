@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync 
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildCheck, main, summarizeLedger } from '../skills/jev-router-inspect/scripts/inspect.mjs'
+import { buildCheck, main, summarizeLedger } from '../skills/dsh-jev-router-inspect/scripts/inspect.mjs'
 
 const cleanup: string[] = []
 afterEach(() => { for (const directory of cleanup.splice(0)) rmSync(directory, { recursive: true, force: true }) })
@@ -129,7 +129,7 @@ it('keeps a check within the request limit by shortening the latest user message
 
 it('runs as a CLI and reports errors on stderr', () => {
   const { args } = fixture()
-  const script = join(import.meta.dirname, '..', 'skills', 'jev-router-inspect', 'scripts', 'inspect.mjs')
+  const script = join(import.meta.dirname, '..', 'skills', 'dsh-jev-router-inspect', 'scripts', 'inspect.mjs')
   const ok = spawnSync(process.execPath, [script, 'sessions', ...args, '--limit', '1'], { encoding: 'utf8' })
   expect(ok.status).toBe(0)
   expect(JSON.parse(ok.stdout)).toHaveLength(1)

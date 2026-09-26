@@ -11,7 +11,7 @@
 
 ## 真实验收矩阵
 
-使用一次性测试会话；每一项检查生成请求头、`stateDirectory` 下 sidecar/ledger 及 `jev-router-inspect` 的 `show <session-id>`。如只配置一个可用模型/档位，对应评估会跳过 HTTP，不能用来验证 Gateway 调用。
+使用一次性测试会话；每一项检查生成请求头、`stateDirectory` 下 sidecar/ledger 及 `dsh-jev-router-inspect` 的 `show <session-id>`。如只配置一个可用模型/档位，对应评估会跳过 HTTP，不能用来验证 Gateway 调用。
 
 | 场景 | 通过标准 |
 | --- | --- |
@@ -26,7 +26,7 @@
 
 ## 失败归因
 
-先用 `jev-router-inspect` 的 `show <session-id>` 查看 `failureReasons`；无 ledger 时检查 `ledger` 是否关闭、请求是否进入主请求，以及该会话是否早于记录功能。若评估根本未开始，检查宿主错误及候选注册状态。诊断日志和 ledger 不含正文、请求体或凭证；不要为排查而粘贴 Bearer token。
+先用 `dsh-jev-router-inspect` 的 `show <session-id>` 查看 `failureReasons`；无 ledger 时检查 `ledger` 是否关闭、请求是否进入主请求，以及该会话是否早于记录功能。若评估根本未开始，检查宿主错误及候选注册状态。诊断日志和 ledger 不含正文、请求体或凭证；不要为排查而粘贴 Bearer token。
 
 | 现象或 reason | 下一步 |
 | --- | --- |

@@ -26,10 +26,10 @@
 
 成功评估还会记录 Gateway 返回的选项概率 `probabilities`；`probabilityStatus` 区分 `available`、`missing` 和 `invalid`。只接受覆盖全部候选项、数值在 0–1 内且总和允许两位小数舍入误差的分布，不重新归一化。缺失或异常概率不影响选档，也不触发重试。旧账本没有概率时视为缺失；单选项跳过评估不生成概率。`show` 的 `probabilityDecisions` 展示各次成功评估的分布、最高项、次高项及概率差 `margin`。这些数据只用于观察，不代表任务成功率，不自动升降档。
 
-仓库附带 skill `jev-router-inspect`，读取上述文件和 Harness 会话日志，查看会话选择、档位分布、降级、失败原因和费用，并可按需问 Jev「保持当前模型，还是另开会话换一个」。只给建议，不会切换模型。安装到 `~/.agents/skills`（dsh 也会读取这个目录）：
+仓库附带 skill `dsh-jev-router-inspect`，读取上述文件和 Harness 会话日志，查看会话选择、档位分布、降级、失败原因和费用，并可按需问 Jev「保持当前模型，还是另开会话换一个」。只给建议，不会切换模型。安装到 `~/.agents/skills`（dsh 也会读取这个目录）：
 
 ```bash
-npx skills add wendyeq/dsh-jev-router --skill jev-router-inspect -g
+npx skills add wendyeq/dsh-jev-router --skill dsh-jev-router-inspect -g
 ```
 
 按需检查换模型时需要环境变量 `AI_GATEWAY_API_KEY`，每次检查产生一次评估费用；读取压缩的会话日志需要 `zstd` 命令。
