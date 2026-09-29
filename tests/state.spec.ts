@@ -115,6 +115,9 @@ it('keeps the last supported effort after three 503 responses', async () => {
   await send(agent); await send(agent)
   expect(h.errors).toEqual([])
   expect(h.adapter.requests.map(request => request.reasoningEffort)).toEqual(['high', 'high'])
+  expect(ledgerOf(h.settings.stateDirectory!, 'fallback-existing').at(-1)).toMatchObject({
+    question: 'effort', outcome: 'fallback', choice: 'high', source: 'previous', reason: 'HTTP 503',
+  })
   expect(fetcher).toHaveBeenCalledTimes(4)
 })
 

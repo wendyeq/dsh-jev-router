@@ -180,7 +180,7 @@ export class JevRouter {
       const chosen = choices.find(item => item.key === choice)?.model
       record({ ...rest, ...chosen ? { model: `${chosen.provider}/${chosen.id}` } : {} })
     })
-    return (await evaluate(this.ctx.credentials, this.config, modelMessages, choices, 'model', signal, log, report)).model
+    return (await evaluate(this.ctx.credentials, this.config, modelMessages, choices, 'model', signal, log, report, undefined)).model
   }
 
   private async selectEffort(
@@ -203,18 +203,18 @@ export class JevRouter {
     if (start < 0) throw new Error(`Jev routing failed: effort floor ${floor} is not supported by ${modelId}`)
     const choices = efforts.slice(start).map(item => ({ key: String(item.id),
       description: descriptions?.[String(item.id)] ?? item.description ?? item.name }))
+    const route = { provider: model.provider, model: model.id }
+    const wire = state.effortWire
+    const previous = agent.session.requestHeader()?.config
+    const held = (wire && sameRoute(wire, route) ? wire.effectiveEffort : undefined)
+      ?? (previous && sameRoute(previous, route) ? previous.reasoningEffort : undefined)
+    const offered = (key: string | undefined): key is string => key !== undefined && choices.some(choice => choice.key === key)
     try {
       const report = record && ((entry: EvaluationRecord) => record({ ...entry, model: modelId }))
-      return (await evaluate(this.ctx.credentials, this.config, evaluationMessages(messages, 'effort'), choices, 'effort', signal, log, report)).key
+      return (await evaluate(this.ctx.credentials, this.config, evaluationMessages(messages, 'effort'), choices, 'effort', signal, log, report, offered(held) ? held : undefined)).key
     } catch (error) {
       if (!(error instanceof JevUnavailableError)) throw error
       signal.throwIfAborted()
-      const route = { provider: model.provider, model: model.id }
-      const wire = state.effortWire
-      const previous = agent.session.requestHeader()?.config
-      const held = (wire && sameRoute(wire, route) ? wire.effectiveEffort : undefined)
-        ?? (previous && sameRoute(previous, route) ? previous.reasoningEffort : undefined)
-      const offered = (key: string | undefined): key is string => key !== undefined && choices.some(choice => choice.key === key)
       const adapterDefault = model.reasoning?.defaultEffort
       // A default below the floor is raised to the floor; an unsupported default still fails.
       const belowFloor = adapterDefault !== undefined && efforts.slice(0, start).some(item => item.id === adapterDefault)

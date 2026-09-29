@@ -1,6 +1,6 @@
 # dsh-jev-router
 
-Optional Cordis plugin that chooses a concrete session model, then an independent reasoning effort for each main request, through the official `typesafe-ai/jev` evaluate API. Mount its bundle beside the Harness profile's model adapter, Session Controller, AgentLoop, and credentials plugins. The patch ships disabled. Enable it with a profile override and set `credentialRefs` to a Harness credential reference for a Vercel AI Gateway Bearer token. The plugin never reads an environment variable directly and never registers a generation adapter.
+Optional Cordis plugin that chooses a concrete session model, then a reasoning effort for each main request, through the official `typesafe-ai/jev` evaluate API. Mount its bundle beside the Harness profile's model adapter, Session Controller, AgentLoop, and credentials plugins. The patch ships disabled. Enable it with a profile override and set `credentialRefs` to a Harness credential reference for a Vercel AI Gateway Bearer token. The plugin never reads an environment variable directly and never registers a generation adapter.
 
 Terms are in [CONTEXT.md](CONTEXT.md) (Chinese). v1 scope is in [ROADMAP.md](ROADMAP.md). Host install, rollback, and acceptance are in [P0 acceptance](docs/p0-acceptance.md). Chinese prose is in [README.zh.md](README.zh.md).
 
@@ -25,6 +25,8 @@ The first main request records an automatic-effort `model/selection` so the UI d
 Only main requests ask Jev. Title and compaction are bypass requests: they use the concrete session model and that adapter's default effort, they do not ask Jev, and they do not choose a session model. With no session model they fail. Request headers and provider calls contain real registered routes, never selector ids.
 
 Model selection sees at most the latest eight user and assistant text bodies. Effort selection may also include tool-result text, 1600 characters per result. System and developer prompts, tool arguments, reasoning blocks, and images are excluded. If the body would exceed its limit, the oldest whole messages are dropped first, never the latest user message. If that message alone still does not fit, its head and tail are kept and the middle is replaced with a marker stating how many of how many characters were omitted. The diagnostic log records only the number of dropped messages and omitted characters.
+
+Effort selection also reports the effort last in effect for the same model route in this Session, when it is still offered. Jev can keep that effort unless there is a clear reason to change, and increase it for repeated failures, unresolved uncertainty, or a difficult next decision. This is the effort before the current decision, not its result. With no usable previous effort (usually the first main request), the field is omitted. Model selection never receives it. This does not change temporary-failure fallback.
 
 ### Failure, retry, and effort fallback
 

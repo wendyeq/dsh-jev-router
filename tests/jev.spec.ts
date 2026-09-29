@@ -232,3 +232,34 @@ it('does not report a caller cancellation', async () => {
   await expect(evaluate(credentials, config, messages, choices, 'effort', controller.signal, undefined, report)).rejects.toThrow('cancelled')
   expect(report).not.toHaveBeenCalled()
 })
+
+it.each([
+  ['effort', 'high'], ['effort', undefined], ['model', 'high'],
+] as const)('only effort questions carry a defined current effort (%s, %s)', async (question, currentEffort) => {
+  const fetcher = vi.fn<typeof fetch>(async () => Response.json({ answers: { route: { choice: 'low' } } }))
+  vi.stubGlobal('fetch', fetcher)
+  const reports: EvaluationRecord[] = []
+  await evaluate(credentials, config, messages, choices, question, new AbortController().signal,
+    undefined, record => reports.push(record), currentEffort)
+  const body = JSON.parse(String(fetcher.mock.calls[0]![1]?.body))
+  expect(body.state).toEqual(question === 'effort' && currentEffort !== undefined ? { messages, currentEffort } : { messages })
+  if (question === 'effort') {
+    expect(body.questions.route.instructions).toContain('Keep current effort unless there is a clear reason to change.')
+    expect(body.questions.route.instructions).not.toContain('Decide independently')
+  }
+  expect(reports[0]).not.toHaveProperty('currentEffort')
+})
+
+it('includes current effort in the byte budget and shortens messages earlier without dropping it', async () => {
+  const fetcher = vi.fn<typeof fetch>(async () => Response.json({ answers: { route: { choice: 'low' } } }))
+  vi.stubGlobal('fetch', fetcher)
+  const history = [{ role: 'user' as const, text: '头'.repeat(200) + '尾'.repeat(200) }]
+  const signal = new AbortController().signal
+  await evaluate(credentials, config, history, choices, 'effort', signal)
+  const bytes = Buffer.byteLength(String(fetcher.mock.calls[0]![1]?.body))
+  await evaluate(credentials, { ...config, maxBodyBytes: bytes }, history, choices, 'effort', signal, undefined, undefined, 'high')
+  const body = String(fetcher.mock.calls[1]![1]?.body)
+  expect(Buffer.byteLength(body)).toBeLessThanOrEqual(bytes)
+  expect(JSON.parse(body).state.currentEffort).toBe('high')
+  expect(JSON.parse(body).state.messages[0].text).toMatch(/omitted \d+ of 400 characters/)
+})
