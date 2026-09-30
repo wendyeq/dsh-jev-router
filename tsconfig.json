@@ -14,7 +14,7 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["src", "tests"],
+  "include": ["src", "tests", "../jev-router-policy/src"],
   "references": [
     { "path": "../deepseek-harness/vendor/cordis" },
     { "path": "../deepseek-harness/vendor/cosmokit" },

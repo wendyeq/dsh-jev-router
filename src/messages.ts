@@ -21,6 +21,22 @@ export function evaluationMessages(messages: readonly RequestMessage[], question
   return result.slice(-8)
 }
 
+/**
+ * Every visible user, assistant, and tool text event, without the legacy window or tool slice.
+ * The shared effort policy applies the eight-event and 1600-code-point limits.
+ * @param messages - chronological history plus accepted, not-yet-logged input.
+ */
+export function effortEvidenceEvents(messages: readonly RequestMessage[]): EvaluationMessage[] {
+  const result: EvaluationMessage[] = []
+  for (const message of messages) {
+    if (message.role !== 'user' && message.role !== 'assistant' && message.role !== 'tool') continue
+    if (message.role === 'user' && 'source' in message && message.source?.kind !== 'user') continue
+    const text = message.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
+    result.push({ role: message.role, text })
+  }
+  return result
+}
+
 /** Messages admitted under the request byte limit, with what was left out. */
 export interface Fitted {
   readonly messages: EvaluationMessage[]

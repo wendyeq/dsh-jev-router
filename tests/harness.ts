@@ -38,10 +38,12 @@ export function configurationUpdates(messages: readonly { content: readonly { ty
   return efforts
 }
 
+const fixtureModelId = (tier: string) => tier === 'sol' ? 'gpt-6.1-sol' : `gpt-6-${tier}`
+
 export class TestAdapter extends LlmAdapter {
   requests: GenerateOptions[] = []
   models: LlmResolvedModelInfo[] = ['luna', 'sol', 'astra'].map(tier => ({
-    provider: 'test', id: `gpt-6-${tier}`, name: `GPT-6 ${tier[0]!.toUpperCase()}${tier.slice(1)}`,
+    provider: 'test', id: fixtureModelId(tier), name: `GPT-6 ${tier[0]!.toUpperCase()}${tier.slice(1)}`,
     inputModalities: ['text', 'image'],
     reasoning: { efforts: ['low', 'medium', 'high'].map(id => ({ id: ReasoningEffortId(id), name: id })), defaultEffort: ReasoningEffortId('medium') },
   }))
@@ -76,7 +78,7 @@ export async function harness(config: Config = {}, persistenceRoot?: string) {
   const adapter = new TestAdapter()
   ctx.effect(() => ctx.llm.registerAdapter(['test'], adapter))
   const settings = { enabled: true, credentialRefs: ['JEV_TOKEN'], stateDirectory: directory,
-    candidates: ['luna', 'sol', 'astra'].map(tier => ({ provider: 'test', model: `gpt-6-${tier}`, description: `fixture-${tier}` })),
+    candidates: ['luna', 'sol', 'astra'].map(tier => ({ provider: 'test', model: fixtureModelId(tier), description: `fixture-${tier}` })),
     ...config }
   const fiber = await ctx.plugin(router, settings)
   const errors: unknown[] = []

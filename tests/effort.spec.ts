@@ -54,7 +54,8 @@ it('reports the effort in effect before the decision, preferring the wire over t
   await send(agent); await send(agent); await send(agent)
   expect(h.errors).toEqual([])
   const states = fetcher.mock.calls.map(call => JSON.parse(String(call[1]?.body)).state)
-  expect(states[0]).not.toHaveProperty('currentEffort')
+  expect(states[0].currentEffort).toBeNull()
+  expect(states[0].modelId).toBe('test/gpt-6-luna')
   expect(states[1].currentEffort).toBe('low')
   expect(states[2].currentEffort).toBe('high')
   expect(agent.session.requestHeader()?.config.reasoningEffort).toBe('low')
@@ -66,11 +67,11 @@ it('does not report a previous effort from another route', async () => {
   const h = await harness(); cleanup.push(h.close)
   const agent = await h.create('other-route', { ...route, reasoningEffort: AUTO_EFFORT })
   await send(agent)
-  agent.session.append('model/selection', { provider: 'test', model: 'gpt-6-sol', reasoningEffort: AUTO_EFFORT })
+  agent.session.append('model/selection', { provider: 'test', model: 'gpt-6.1-sol', reasoningEffort: AUTO_EFFORT })
   await send(agent)
   expect(h.errors).toEqual([])
   expect(fetcher).toHaveBeenCalledTimes(2)
-  expect(JSON.parse(String(fetcher.mock.calls[1]![1]?.body)).state).not.toHaveProperty('currentEffort')
+  expect(JSON.parse(String(fetcher.mock.calls[1]![1]?.body)).state.currentEffort).toBeNull()
 })
 
 it('omits a previous effort that is no longer offered above the floor', async () => {
@@ -82,7 +83,7 @@ it('omits a previous effort that is no longer offered above the floor', async ()
   await send(agent)
   expect(h.errors).toEqual([])
   expect(fetcher).toHaveBeenCalledTimes(1)
-  expect(JSON.parse(String(fetcher.mock.calls[0]![1]?.body)).state).not.toHaveProperty('currentEffort')
+  expect(JSON.parse(String(fetcher.mock.calls[0]![1]?.body)).state.currentEffort).toBeNull()
 })
 
 it('reports the same-route request header effort when there is no wire', async () => {

@@ -244,8 +244,8 @@ it.each([
   const body = JSON.parse(String(fetcher.mock.calls[0]![1]?.body))
   expect(body.state).toEqual(question === 'effort' && currentEffort !== undefined ? { messages, currentEffort } : { messages })
   if (question === 'effort') {
-    expect(body.questions.route.instructions).toContain('Keep current effort unless there is a clear reason to change.')
-    expect(body.questions.route.instructions).not.toContain('Decide independently')
+    expect(body.questions.route.instructions).toContain('The previous effort is only a fact')
+    expect(body.questions.route.instructions).not.toContain('Keep current effort unless there is a clear reason to change.')
   }
   expect(reports[0]).not.toHaveProperty('currentEffort')
 })

@@ -12,11 +12,11 @@ const policy = {
   version: 1,
   candidates: [
     { provider: 'test', model: 'gpt-6-luna', description: 'fixture-luna' },
-    { provider: 'test', model: 'gpt-6-sol', description: 'fixture-sol' },
+    { provider: 'test', model: 'gpt-6.1-sol', description: 'fixture-sol' },
     { model: 'gpt-6-astra', description: 'fixture-astra' },
   ],
   effortDescriptions: {},
-  effortFloors: { 'gpt-6-sol': 'medium' },
+  effortFloors: { 'gpt-6.1-sol': 'medium' },
 }
 
 function fixture() {
@@ -35,14 +35,14 @@ function fixture() {
   sidecar('session-old', { version: 1, selection: { provider: 'test', model: 'gpt-6-luna', reasoningEffort: 'low' }, afterSeq: 1, pin: null }, [], 1000)
   sidecar('session-new', {
     version: 1, selection: { provider: 'auto', model: 'jev', reasoningEffort: 'auto/jev' }, afterSeq: 2,
-    pin: { provider: 'test', model: 'gpt-6-sol', selectedAt: Date.UTC(2026, 8, 24) },
-    effortWire: { provider: 'test', model: 'gpt-6-sol', requestEffort: 'medium', effectiveEffort: 'high' },
+    pin: { provider: 'test', model: 'gpt-6.1-sol', selectedAt: Date.UTC(2026, 8, 24) },
+    effortWire: { provider: 'test', model: 'gpt-6.1-sol', requestEffort: 'medium', effectiveEffort: 'high' },
   }, [
-    { time: 't1', question: 'model', outcome: 'chosen', model: 'test/gpt-6-sol', attempts: 1, inputTokens: 400, outputTokens: 20, cost: 0.001 },
-    { time: 't2', question: 'effort', outcome: 'chosen', model: 'test/gpt-6-sol', choice: 'medium', attempts: 2, inputTokens: 300, outputTokens: 10, cost: 0.0005, dropped: 3 },
-    { time: 't3', question: 'effort', outcome: 'unavailable', model: 'test/gpt-6-sol', reason: 'HTTP 503', attempts: 3 },
-    { time: 't4', question: 'effort', outcome: 'fallback', model: 'test/gpt-6-sol', choice: 'medium', source: 'previous', reason: 'HTTP 503' },
-    { time: 't5', question: 'effort', outcome: 'chosen', model: 'test/gpt-6-sol', choice: 'high', attempts: 1, inputTokens: 1000, outputTokens: 10 },
+    { time: 't1', question: 'model', outcome: 'chosen', model: 'test/gpt-6.1-sol', attempts: 1, inputTokens: 400, outputTokens: 20, cost: 0.001 },
+    { time: 't2', question: 'effort', outcome: 'chosen', model: 'test/gpt-6.1-sol', choice: 'medium', attempts: 2, inputTokens: 300, outputTokens: 10, cost: 0.0005, dropped: 3 },
+    { time: 't3', question: 'effort', outcome: 'unavailable', model: 'test/gpt-6.1-sol', reason: 'HTTP 503', attempts: 3 },
+    { time: 't4', question: 'effort', outcome: 'fallback', model: 'test/gpt-6.1-sol', choice: 'medium', source: 'previous', reason: 'HTTP 503' },
+    { time: 't5', question: 'effort', outcome: 'chosen', model: 'test/gpt-6.1-sol', choice: 'high', attempts: 1, inputTokens: 1000, outputTokens: 10 },
   ], 2000)
   const logDirectory = join(dshHome, 'sessions', '--Users-me-project--', 'session-new')
   mkdirSync(logDirectory, { recursive: true })
@@ -59,7 +59,7 @@ function fixture() {
 it('lists sessions newest first with their selection, effort and usage totals', async () => {
   const { args } = fixture()
   expect(await main(['sessions', ...args])).toEqual([
-    expect.objectContaining({ id: 'session-new', model: 'test/gpt-6-sol', modelMode: 'auto (pinned)', effortMode: 'auto', effort: 'high',
+    expect.objectContaining({ id: 'session-new', model: 'test/gpt-6.1-sol', modelMode: 'auto (pinned)', effortMode: 'auto', effort: 'high',
       evaluations: 4, inputTokens: 1700, outputTokens: 40, gatewayCostUsd: 0.0015 }),
     expect.objectContaining({ id: 'session-old', model: 'test/gpt-6-luna', modelMode: 'specified', effortMode: 'specified', effort: 'low', evaluations: 0 }),
   ])
@@ -70,10 +70,10 @@ it('summarizes effort distribution, fallbacks, failures, shortening and cost for
   const shown = await main(['show', 'latest', ...args, '--input-price', '0.5', '--output-price', '2']) as Record<string, any>
   expect(shown.id).toBe('session-new')
   expect(shown.sessionLog).toBe(join(dshHome, 'sessions', '--Users-me-project--', 'session-new', 'session.v4.jsonl'))
-  expect(shown.policy).toEqual({ candidates: ['test/gpt-6-luna', 'test/gpt-6-sol', 'gpt-6-astra'], effortFloors: { 'gpt-6-sol': 'medium' } })
+  expect(shown.policy).toEqual({ candidates: ['test/gpt-6-luna', 'test/gpt-6.1-sol', 'gpt-6-astra'], effortFloors: { 'gpt-6.1-sol': 'medium' } })
   expect(shown.ledger).toMatchObject({
     records: 5,
-    effortsByModel: { 'test/gpt-6-sol': { medium: 2, high: 1 } },
+    effortsByModel: { 'test/gpt-6.1-sol': { medium: 2, high: 1 } },
     fallbackSources: { previous: 1 },
     failureReasons: { 'HTTP 503': 2 },
     shortenedEvaluations: 1,
@@ -92,7 +92,7 @@ it('offers keep plus every other candidate and sends only user and assistant bod
     usage: { inputTokens: 520, outputTokens: 12 }, providerMetadata: { gateway: { cost: '0.00002' } },
   }))
   const result = await main(['check', 'session-new', ...args], { env: { AI_GATEWAY_API_KEY: 'key' }, fetcher }) as Record<string, any>
-  expect(result).toMatchObject({ current: 'test/gpt-6-sol', suggestion: 'gpt-6-astra', alternatives: ['test/gpt-6-luna', 'gpt-6-astra'],
+  expect(result).toMatchObject({ current: 'test/gpt-6.1-sol', suggestion: 'gpt-6-astra', alternatives: ['test/gpt-6-luna', 'gpt-6-astra'],
     probabilities: { keep: 0.3, 'test/gpt-6-luna': 0.05, 'gpt-6-astra': 0.65 },
     usage: { attempts: 1, inputTokens: 520, outputTokens: 12, gatewayCostUsd: 0.00002 } })
   const body = JSON.parse(String(fetcher.mock.calls[0]![1]?.body))
@@ -121,7 +121,7 @@ it('retries a temporary gateway failure and rejects an answer outside the offere
 })
 
 it('keeps a check within the request limit by shortening the latest user message', () => {
-  const check = buildCheck('test/gpt-6-sol', policy as never, [{ role: 'assistant', text: 'old' }, { role: 'user', text: '汉'.repeat(20000) }])
+  const check = buildCheck('test/gpt-6.1-sol', policy as never, [{ role: 'assistant', text: 'old' }, { role: 'user', text: '汉'.repeat(20000) }])
   expect(Buffer.byteLength(check.body)).toBeLessThanOrEqual(28000)
   expect(check.sentMessages).toBe(1)
   expect(check.body).toContain('of 20000 characters')

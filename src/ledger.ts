@@ -2,6 +2,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SessionId } from '@deepseek-ai/dsh-session'
+import { POLICY_VERSION } from '../../jev-router-policy/src/index.ts'
 import type { ResolvedConfig } from './config.ts'
 import { replacePrivateFile } from './store.ts'
 
@@ -32,6 +33,33 @@ export interface LedgerEntry {
   readonly cost?: number
   readonly dropped?: number
   readonly omittedChars?: number
+  /** Shared effort policy. Old logs omit these; new logs do not replace them. */
+  readonly policyVersion?: string
+  readonly evaluationId?: string
+  readonly entryMode?: string
+  readonly candidates?: readonly string[]
+  readonly currentEffort?: string | null
+  readonly rawChoice?: string | null
+  readonly rawConfidence?: number | null
+  readonly confidenceStatus?: 'available' | 'missing' | 'invalid'
+  readonly rawProbabilities?: Record<string, number | null>
+  readonly topEffort?: string | null
+  readonly topProbability?: number | null
+  readonly runnerUpProbability?: number | null
+  readonly margin?: number | null
+  readonly selectedEffort?: string
+  readonly effectiveEffort?: string | null
+  readonly requestEffort?: string | null
+  readonly decisionReason?: string
+  readonly raised?: boolean
+  readonly capped?: boolean
+  readonly tied?: boolean
+  readonly choiceTopMismatch?: boolean
+  readonly failureClass?: string | null
+  readonly fallbackSource?: string | null
+  readonly omittedCodePoints?: number
+  readonly applyStatus?: 'selected' | 'applied' | 'not-applied' | 'apply-failed' | 'cancelled'
+  readonly reused?: boolean
 }
 
 /** @param directory - router state directory.
@@ -74,6 +102,7 @@ export function writePolicy(config: ResolvedConfig, warn: (message: string) => v
   try {
     replacePrivateFile(config.stateDirectory, file, JSON.stringify({
       version: 1,
+      policyVersion: POLICY_VERSION,
       writtenAt: new Date().toISOString(),
       candidates: config.candidates,
       effortDescriptions: config.effortDescriptions,
