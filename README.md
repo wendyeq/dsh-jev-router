@@ -8,6 +8,10 @@ Terms are in [CONTEXT.md](CONTEXT.md) (Chinese). v1 scope is in [ROADMAP.md](ROA
 
 Upstream DeepSeek Harness does not provide the selector events or the `configuration-update` block this plugin uses. Run it against [wendyeq/deepseek-harness](https://github.com/wendyeq/deepseek-harness) branch `local/jev-host` at `737a4c131e` or a descendant of that commit. Tests import the sibling checkout `../deepseek-harness`. Local tests do not replace a credentialed host smoke test.
 
+## Shared effort policy
+
+Automatic effort for `gpt-6-astra`, `gpt-6-luna`, and `gpt-6.1-sol` comes from the sibling `../jev-router-policy/src/index.ts`. Source files import that relative path. There is no `package.json` dependency and no machine-absolute path. `npm run build` copies the imported source into `dist/index.js`. The host loads that bundle, not the sibling directory. Editing the policy does nothing until the next build and the next process start. Pi loads the same file when its extension loads; this plugin does not.
+
 ## Selection
 
 The model list adds `auto/jev`. The effort list adds `自动` (`auto/jev` internally).

@@ -8,6 +8,10 @@
 
 上游 DeepSeek Harness 没有本插件使用的选择器事件和 `configuration-update` 内容块。请配合 [wendyeq/deepseek-harness](https://github.com/wendyeq/deepseek-harness) 的 `local/jev-host` 分支，从 `737a4c131e` 或其后续提交运行。测试从旁边的 `../deepseek-harness` 检出导入。本地测试不代替需要 Gateway 凭证的真实验收。
 
+## 共享推理策略
+
+`gpt-6-astra`、`gpt-6-luna` 和 `gpt-6.1-sol` 的自动推理强度来自旁边的 `../jev-router-policy/src/index.ts`。源码用这条相对路径导入，没有写入 `package.json` 依赖，也没有机器绝对路径。`npm run build` 把这份源码打进 `dist/index.js`。宿主加载的是这个包，不是旁边的目录。只改策略源码不会生效，要重新构建，并在下次启动宿主时加载新的 `dist/index.js`。Pi 在加载扩展时读取同一份文件；本插件不会。
+
 ## 选择
 
 模型列表增加 `auto/jev`，推理强度列表增加「自动」（内部值 `auto/jev`）。
