@@ -85,6 +85,24 @@ it('summarizes effort distribution, fallbacks, failures, shortening and cost for
   await expect(main(['show', 'latest', ...args, '--input-price', '-1'])).rejects.toThrow('non-negative')
 })
 
+it('separates effective effort, policy reduction and unknown historical drop causes', () => {
+  const entries: Parameters<typeof summarizeLedger>[0] = [
+    { time: 't1', question: 'effort', outcome: 'chosen', model: 'test/sol', choice: 'medium', selectedEffort: 'high', effectiveEffort: 'high', applyStatus: 'applied', raised: true, attempts: 1, inputTokens: 10, omittedCodePoints: 100, dropped: 3, windowDropped: 3, budgetDropped: 0 },
+    { time: 't2', question: 'effort', outcome: 'chosen', model: 'test/sol', choice: 'high', selectedEffort: 'high', effectiveEffort: 'low', applyStatus: 'not-applied', attempts: 1, inputTokens: 20, dropped: 2, windowDropped: 0, budgetDropped: 2 },
+    { time: 't3', question: 'effort', outcome: 'chosen', model: 'test/sol', choice: 'low', attempts: 1, inputTokens: 30, omittedCodePoints: 50 },
+    { time: 't4', question: 'effort', outcome: 'chosen', model: 'test/sol', choice: 'medium', attempts: 1, inputTokens: 40, dropped: 41, omittedChars: 20 },
+    { time: 't5', question: 'effort', outcome: 'chosen', model: 'test/sol', choice: 'high', effectiveEffort: null, applyStatus: 'apply-failed', attempts: 1, inputTokens: 50 },
+    { time: 't6', question: 'effort', outcome: 'chosen', model: 'test/sol', choice: 'medium', effectiveEffort: 'high', applyStatus: 'applied', raised: true, reused: true, attempts: 1, inputTokens: 10, cost: 1, omittedCodePoints: 100, dropped: 3, windowDropped: 3, budgetDropped: 0 },
+  ]
+  const summary = summarizeLedger(entries)
+  expect(summary.effortsByModel).toEqual({ 'test/sol': { high: 2, low: 2, medium: 1 } })
+  expect(summary.rawEffortsByModel).toEqual({ 'test/sol': { medium: 3, high: 2, low: 1 } })
+  expect(summary.effortObservation).toMatchObject({ effectiveRecords: 3, legacyChoiceRecords: 2, unknownEffectiveRecords: 1, raisedRecords: 2, reusedRecords: 1 })
+  expect(summary.shortenedEvaluations).toBe(4)
+  expect(summary.evidenceReduction).toMatchObject({ windowLimitedEvaluations: 1, budgetLimitedEvaluations: 1, textShortenedEvaluations: 3, unknownDropCauseEvaluations: 1 })
+  expect(summary.usage).toMatchObject({ evaluations: 5, httpAttempts: 5, inputTokens: 150, gatewayCostUsd: 0 })
+})
+
 it('offers keep plus every other candidate and sends only user and assistant body text', async () => {
   const { args } = fixture()
   const fetcher = vi.fn<typeof fetch>(async () => Response.json({

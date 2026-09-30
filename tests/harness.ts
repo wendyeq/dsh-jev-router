@@ -14,6 +14,12 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import * as router from '../src/index.ts'
 import type { Config } from '../src/config.ts'
+import { expect, vi } from 'vitest'
+import * as client from '../../jev-router-policy/src/client.ts'
+import { requestRecords } from './request-records.ts'
+
+// Observe the real shared transport, so fixture deletion cannot race asynchronous appends.
+const sentRequests = vi.spyOn(client, 'sendJevRequest')
 
 export class TestCredentials extends CredentialProvider {
   async resolve() { return { value: 'test-token', source: 'test' } }
@@ -88,7 +94,22 @@ export async function harness(config: Config = {}, persistenceRoot?: string) {
     async create(id = 'root', selection: LlmCallConfig = { provider: 'auto', model: 'jev' }) {
       return (await ctx.agents.create({ sessionId: SessionId(id), agentOptions: selection })).agent
     },
-    async close() { await ctx.fiber.dispose(); rmSync(directory, { recursive: true, force: true }) },
+    async close() {
+      await ctx.fiber.dispose()
+      // Restored fixtures may borrow another fixture's state directory; only its owner deletes it.
+      if (settings.stateDirectory === directory) {
+        const expected = new Map<string, number>()
+        for (const [options] of sentRequests.mock.calls) {
+          if (options.record?.directory !== join(directory, 'requests')) continue
+          const id = options.record.sessionId
+          expected.set(id, (expected.get(id) ?? 0) + 1)
+        }
+        await vi.waitFor(() => {
+          for (const [id, count] of expected) expect(requestRecords(directory, id)).toHaveLength(count)
+        }, { timeout: 5000, interval: 10 })
+      }
+      rmSync(directory, { recursive: true, force: true })
+    },
   }
 }
 

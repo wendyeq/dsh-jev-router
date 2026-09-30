@@ -34,7 +34,9 @@ node scripts/inspect.mjs check <session-id|latest>    # 问 Jev：保持当前�
 ## 解读要点
 
 - `selection.modelMode` 为 `auto (not yet chosen)`：第一次主请求还没成功，没有会话模型。
-- `effortsByModel` 是每次主请求实际用的档位分布，包括降级（`fallbackSources`）。
+- `effortsByModel` 优先统计 `effectiveEffort`；旧记录没有应用字段时才用 `choice`，数量见 `effortObservation.legacyChoiceRecords`。有应用字段但没有确认生效档位的记录不猜测，见 `unknownEffectiveRecords`。`rawEffortsByModel` 单独展示原始选择，`raisedRecords` 为策略升档记录数。
 - `failureReasons` 里 `HTTP 5xx`、`timeout`、`network` 是临时故障；`credential`、`body-limit`、`invalid-answer` 是配置或数据问题，建议用户查配置。
-- `shortenedEvaluations` 是因超出 28,000 字节而丢弃旧消息或截断的评估次数。
+- `shortenedEvaluations` 是评估副本有任何缩减的次数，不是异常次数或超预算次数。`evidenceReduction` 分开统计正常窗口淘汰（`windowLimitedEvaluations`）、正文截短（`textShortenedEvaluations`）和额外预算淘汰（`budgetLimitedEvaluations`）；三者可重叠。历史账本只有合并的 `dropped` 时，原因见 `unknownDropCauseEvaluations`，不能推断为超出 28,000 字节。
+- `omittedCodePoints` 优先于旧字段 `omittedChars`，不重复相加。缩减仅作用于 Jev 的证据副本，不改主模型正文；缩减频率不代表性能或路由判断质量。
+- `reusedRecords` 是复用决策的应用记录；复用不计为新评估，也不重复累加请求、token、费用和缩减次数。
 - `probabilityDecisions` 展示成功评估的选项概率、最高项 `top`、次高项 `runnerUp` 和概率差 `margin`。`status` 为 `available` / `missing` / `invalid`；旧记录视为缺失，单选项与降级不计入。概率差仅用于观察选项区分程度，不是任务成功率，也不是自动升降档的依据。

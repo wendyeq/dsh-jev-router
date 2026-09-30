@@ -58,6 +58,10 @@ export interface LedgerEntry {
   readonly failureClass?: string | null
   readonly fallbackSource?: string | null
   readonly omittedCodePoints?: number
+  /** Normal eight-event window exclusion; independent of transport budget. */
+  readonly windowDropped?: number
+  /** Additional events excluded to fit the serialized Jev request. */
+  readonly budgetDropped?: number
   readonly applyStatus?: 'selected' | 'applied' | 'not-applied' | 'apply-failed' | 'cancelled'
   readonly reused?: boolean
 }

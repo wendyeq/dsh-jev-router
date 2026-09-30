@@ -23,7 +23,8 @@ const TRANSIENT = new Set([408, 429, 500, 502, 503, 504])
  * @typedef {{ version: 1, selection: Selection, afterSeq: number, pin: { provider: string, model: string, selectedAt: number } | null,
  *   effortWire?: { provider: string, model: string, requestEffort: string, effectiveEffort: string } }} Sidecar
  * @typedef {{ time: string, question: 'model' | 'effort', outcome: string, model?: string, choice?: string, source?: string, reason?: string,
- *   attempts?: number, durationMs?: number, inputTokens?: number, outputTokens?: number, cost?: number, dropped?: number, omittedChars?: number,
+ *   attempts?: number, durationMs?: number, inputTokens?: number, outputTokens?: number, cost?: number, dropped?: number, omittedChars?: number, omittedCodePoints?: number, windowDropped?: number, budgetDropped?: number,
+ *   effectiveEffort?: string | null, selectedEffort?: string, applyStatus?: string, raised?: boolean, reused?: boolean,
  *   probabilities?: Record<string, number>, probabilityStatus?: 'available' | 'missing' | 'invalid' }} LedgerEntry
  * @typedef {{ role: 'user' | 'assistant', text: string }} Message
  * @typedef {{ input?: number | undefined, output?: number | undefined }} Prices USD per million tokens.
@@ -125,6 +126,12 @@ function probabilityDecisions(entries) {
   })
 }
 
+/** @param {Record<string, Record<string, number>>} distribution @param {string} model @param {string} effort */
+function countEffort(distribution, model, effort) {
+  distribution[model] ??= {}
+  distribution[model][effort] = (distribution[model][effort] ?? 0) + 1
+}
+
 /**
  * @param {LedgerEntry[]} entries
  * @param {Prices} [prices]
@@ -132,6 +139,9 @@ function probabilityDecisions(entries) {
 export function summarizeLedger(entries, prices = {}) {
   /** @type {Record<string, number>} */ const outcomes = {}
   /** @type {Record<string, Record<string, number>>} */ const efforts = {}
+  /** @type {Record<string, Record<string, number>>} */ const rawEfforts = {}
+  const effortObservation = { effectiveRecords: 0, legacyChoiceRecords: 0, unknownEffectiveRecords: 0, raisedRecords: 0, reusedRecords: 0 }
+  const evidenceReduction = { windowLimitedEvaluations: 0, budgetLimitedEvaluations: 0, textShortenedEvaluations: 0, unknownDropCauseEvaluations: 0 }
   /** @type {Record<string, number>} */ const reasons = {}
   /** @type {Record<string, number>} */ const fallbackSources = {}
   let evaluations = 0, httpAttempts = 0, inputTokens = 0, outputTokens = 0, gatewayCost = 0, unmetered = 0, shortened = 0
@@ -142,13 +152,30 @@ export function summarizeLedger(entries, prices = {}) {
     if (entry.outcome === 'fallback' && entry.source) fallbackSources[entry.source] = (fallbackSources[entry.source] ?? 0) + 1
     if (entry.question === 'effort' && entry.choice && (entry.outcome === 'chosen' || entry.outcome === 'single' || entry.outcome === 'fallback')) {
       const model = entry.model ?? 'unknown'
-      efforts[model] ??= {}
-      efforts[model][entry.choice] = (efforts[model][entry.choice] ?? 0) + 1
+      countEffort(rawEfforts, model, entry.choice)
+      if (typeof entry.effectiveEffort === 'string') {
+        countEffort(efforts, model, entry.effectiveEffort)
+        effortObservation.effectiveRecords += 1
+      } else if (entry.applyStatus === undefined && entry.selectedEffort === undefined && entry.effectiveEffort === undefined) {
+        countEffort(efforts, model, entry.choice)
+        effortObservation.legacyChoiceRecords += 1
+      } else {
+        effortObservation.unknownEffectiveRecords += 1
+      }
+      if (entry.raised) effortObservation.raisedRecords += 1
+      if (entry.reused) effortObservation.reusedRecords += 1
     }
-    if (entry.outcome === 'fallback' || entry.outcome === 'single') continue
+    if (entry.reused || entry.outcome === 'fallback' || entry.outcome === 'single') continue
     evaluations += 1
     httpAttempts += entry.attempts ?? 0
-    if ((entry.dropped ?? 0) > 0 || (entry.omittedChars ?? 0) > 0) shortened += 1
+    const omitted = entry.omittedCodePoints ?? entry.omittedChars ?? 0
+    if ((entry.dropped ?? 0) > 0 || omitted > 0) shortened += 1
+    if ((entry.windowDropped ?? 0) > 0) evidenceReduction.windowLimitedEvaluations += 1
+    if ((entry.budgetDropped ?? 0) > 0) evidenceReduction.budgetLimitedEvaluations += 1
+    if (omitted > 0) evidenceReduction.textShortenedEvaluations += 1
+    if ((entry.dropped ?? 0) > 0 && (entry.windowDropped === undefined || entry.budgetDropped === undefined)) {
+      evidenceReduction.unknownDropCauseEvaluations += 1
+    }
     if (entry.inputTokens === undefined && (entry.attempts ?? 0) > 0) unmetered += 1
     inputTokens += entry.inputTokens ?? 0
     outputTokens += entry.outputTokens ?? 0
@@ -162,6 +189,9 @@ export function summarizeLedger(entries, prices = {}) {
     lastAt: entries.at(-1)?.time ?? null,
     outcomes,
     effortsByModel: efforts,
+    rawEffortsByModel: rawEfforts,
+    effortObservation,
+    evidenceReduction,
     probabilityDecisions: probabilityDecisions(entries),
     fallbackSources,
     failureReasons: reasons,

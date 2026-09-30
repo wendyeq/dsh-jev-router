@@ -2,7 +2,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { createHash, randomUUID } from 'node:crypto'
 import { appendFileSync, mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
+import type { RequestRecord } from '../../jev-router-policy/src/client.ts'
 import type {} from '@deepseek-ai/dsh-api-session-controller/types'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createDeveloperMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
@@ -57,6 +58,8 @@ interface UnifiedPick {
   readonly durationMs: number
   readonly dropped: number
   readonly omittedCodePoints: number
+  readonly windowDropped: number
+  readonly budgetDropped?: number
   readonly inputTokens?: number
   readonly outputTokens?: number
   readonly cost?: number
@@ -166,8 +169,12 @@ export class JevRouter {
       }
       return this.finish(agent, state, turn, step, { provider: selection.provider, model: selection.model }, selection.reasoningEffort, base, signal, log)
     }
-    const model = await this.selectModel(state, autoModel, messages, signal, log, record)
-    const effort = await this.selectEffort(agent, state, model, messages, signal, autoEffort, log, record)
+    const requestRecord: RequestRecord = {
+      directory: join(this.config.stateDirectory, 'requests'), sessionId: agent.session.id,
+      fileName: `${encodeURIComponent(agent.session.id)}.jsonl`, warn: message => this.ctx.logger.warn(message),
+    }
+    const model = await this.selectModel(state, autoModel, messages, signal, log, record, requestRecord)
+    const effort = await this.selectEffort(agent, state, model, messages, signal, autoEffort, log, record, requestRecord)
     const { reasoningEffort: _previous, ...base } = proposed
     const route = { provider: model.provider, model: model.id }
     const pinned = autoModel && state.pin === null
@@ -192,6 +199,7 @@ export class JevRouter {
     signal: AbortSignal,
     log: ((message: string) => void) | undefined,
     record: ((entry: LedgerEntry) => void) | undefined,
+    requestRecord: RequestRecord,
   ): Promise<LlmResolvedModelInfo> {
     if (!(autoModel && state.pin === null)) {
       const route = autoModel ? state.pin! : state.selection
@@ -206,7 +214,7 @@ export class JevRouter {
       const chosen = choices.find(item => item.key === choice)?.model
       record({ ...rest, ...chosen ? { model: `${chosen.provider}/${chosen.id}` } : {} })
     })
-    return (await evaluate(this.ctx.credentials, this.config, modelMessages, choices, 'model', signal, log, report, undefined)).model
+    return (await evaluate(this.ctx.credentials, this.config, modelMessages, choices, 'model', signal, log, report, undefined, requestRecord)).model
   }
 
   private async selectEffort(
@@ -218,9 +226,10 @@ export class JevRouter {
     autoEffort: boolean,
     log: ((message: string) => void) | undefined,
     record: ((entry: LedgerEntry) => void) | undefined,
+    requestRecord: RequestRecord,
   ): Promise<string | undefined | UnifiedPick> {
     if (!autoEffort) return state.selection.reasoningEffort
-    const unified = await this.selectUnified(agent, state, model, messages, signal, log, record)
+    const unified = await this.selectUnified(agent, state, model, messages, signal, log, record, requestRecord)
     if (unified !== 'legacy') return unified
     const modelId = `${model.provider}/${model.id}`
     const descriptions = this.config.effortDescriptions[modelId] ?? this.config.effortDescriptions[model.id]
@@ -239,7 +248,7 @@ export class JevRouter {
     const offered = (key: string | undefined): key is string => key !== undefined && choices.some(choice => choice.key === key)
     try {
       const report = record && ((entry: EvaluationRecord) => record({ ...entry, model: modelId }))
-      return (await evaluate(this.ctx.credentials, this.config, evaluationMessages(messages, 'effort'), choices, 'effort', signal, log, report, offered(held) ? held : undefined)).key
+      return (await evaluate(this.ctx.credentials, this.config, evaluationMessages(messages, 'effort'), choices, 'effort', signal, log, report, offered(held) ? held : undefined, requestRecord)).key
     } catch (error) {
       if (!(error instanceof JevUnavailableError)) throw error
       signal.throwIfAborted()
@@ -275,6 +284,7 @@ export class JevRouter {
     signal: AbortSignal,
     log: ((message: string) => void) | undefined,
     record: ((entry: LedgerEntry) => void) | undefined,
+    requestRecord: RequestRecord,
   ): Promise<UnifiedPick | 'legacy'> {
     const modelId = `${model.provider}/${model.id}`
     const supported = (model.reasoning?.efforts ?? []).map(item => String(item.id))
@@ -300,12 +310,17 @@ export class JevRouter {
     if (cached) return { ...cached, reused: true }
     const criteria = effortCriteria(candidates)
     const choices = candidates.map(key => ({ key, description: criteria[key]! }))
-    const report = record && ((entry: EvaluationRecord) => record({ ...entry, model: modelId }))
+    const report = record && ((entry: EvaluationRecord) => record({
+      ...entry, model: modelId, windowDropped: prepared.windowDropped, budgetDropped: entry.dropped ?? 0,
+      dropped: prepared.windowDropped + (entry.dropped ?? 0),
+      omittedCodePoints: prepared.omittedCodePoints + (entry.omittedChars ?? 0),
+    }))
     let decision: EffortDecision
     let outcome: UnifiedPick['outcome'] = 'chosen'
     let reason: string | undefined
     let attempts = 0
     let durationMs = 0
+    let budgetDropped: number | undefined = candidates.length === 1 ? 0 : undefined
     let dropped = prepared.windowDropped
     let omittedCodePoints = prepared.omittedCodePoints
     let inputTokens: number | undefined
@@ -323,9 +338,10 @@ export class JevRouter {
       log?.(`effort single choice=${decision.selectedEffort}, no HTTP request`)
     } else {
       try {
-        const observed = await evaluateUnifiedEffort(this.ctx.credentials, this.config, prepared.messages, choices, signal, modelId, current, log, report)
+        const observed = await evaluateUnifiedEffort(this.ctx.credentials, this.config, prepared.messages, choices, signal, modelId, current, log, report, requestRecord)
         attempts = observed.attempts
         durationMs = observed.durationMs
+        budgetDropped = observed.dropped
         dropped += observed.dropped
         omittedCodePoints += observed.omittedCodePoints
         inputTokens = observed.inputTokens
@@ -345,6 +361,10 @@ export class JevRouter {
         if (signal.aborted) throw signal.reason
         const invalidChoice = error instanceof Error && error.message.includes('outside the offered criteria')
         if (!invalidChoice && !(error instanceof JevUnavailableError) && !(error instanceof EffortBudgetError)) throw error
+        if (error instanceof EffortBudgetError) {
+          budgetDropped = error.dropped
+          dropped += error.dropped
+        }
         reason = invalidChoice ? 'invalid-choice' : error instanceof JevUnavailableError ? error.reason : 'budget'
         decision = fallback(reason)
         outcome = 'fallback'
@@ -354,7 +374,8 @@ export class JevRouter {
     const pick: UnifiedPick = {
       kind: 'unified', selectedEffort: decision.selectedEffort, decision, candidates, modelId,
       evaluationId: randomUUID(), outcome, ...reason === undefined ? {} : { reason }, reused: false,
-      attempts, durationMs, dropped, omittedCodePoints,
+      attempts, durationMs, dropped, omittedCodePoints, windowDropped: prepared.windowDropped,
+      ...budgetDropped === undefined ? {} : { budgetDropped },
       ...inputTokens === undefined ? {} : { inputTokens },
       ...outputTokens === undefined ? {} : { outputTokens },
       ...cost === undefined ? {} : { cost },
@@ -401,6 +422,7 @@ export class JevRouter {
       ...pick.reason === undefined ? {} : { reason: pick.reason },
       ...decision.fallbackSource ? { source: decision.fallbackSource } : {},
       attempts: pick.attempts, durationMs: pick.durationMs, dropped: pick.dropped, omittedCodePoints: pick.omittedCodePoints,
+      windowDropped: pick.windowDropped, ...pick.budgetDropped === undefined ? {} : { budgetDropped: pick.budgetDropped },
       ...pick.inputTokens === undefined ? {} : { inputTokens: pick.inputTokens },
       ...pick.outputTokens === undefined ? {} : { outputTokens: pick.outputTokens },
       ...pick.cost === undefined ? {} : { cost: pick.cost },

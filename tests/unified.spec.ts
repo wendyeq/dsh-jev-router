@@ -19,6 +19,68 @@ function answer(body: unknown) {
   return fetcher
 }
 
+it.each([28000, 2400])('records drop causes without changing evidence or source history (budget %s)', async (maxBodyBytes) => {
+  const fetcher = answer({ answers: { route: { choice: 'low', confidence: 0.9, probabilities: { low: 0.8, medium: 0.1, high: 0.1 } } } })
+  const h = await harness({ maxBodyBytes }); cleanup.push(h.close)
+  const agent = await h.create(`observed-${maxBodyBytes}`, sol)
+  const router = new JevRouter(h.ctx, (await import('../src/config.ts')).resolveConfig(h.settings))
+  const messages = Array.from({ length: 10 }, (_, i) => createUserMessage({
+    content: [{ type: 'text', text: i === 9 ? 'current task' : `${i}:` + 'x'.repeat(2000) }], source: { kind: 'user' },
+  }))
+  const before = JSON.stringify(messages)
+  const { prepareEvidence, fitEvidenceToBudget, effortState, effortCriteria } = await import('../../jev-router-policy/src/index.ts')
+  const { effortEvidenceEvents } = await import('../src/messages.ts')
+  const prepared = prepareEvidence(effortEvidenceEvents(messages))
+  await router.main(agent, sol, messages, new AbortController().signal)
+  const body = JSON.parse(String(fetcher.mock.calls[0]![1]?.body))
+  const expected = fitEvidenceToBudget(prepared.messages, items => Buffer.byteLength(JSON.stringify({
+    ...body, state: effortState('test/gpt-6.1-sol', null, items),
+  })) <= maxBodyBytes)
+  expect(body.state).toEqual(effortState('test/gpt-6.1-sol', null, expected.messages))
+  expect(body.questions.route.criteria).toEqual(effortCriteria(['low', 'medium', 'high']))
+  expect(Buffer.byteLength(String(fetcher.mock.calls[0]![1]?.body))).toBeLessThanOrEqual(maxBodyBytes)
+  expect(JSON.stringify(messages)).toBe(before)
+  expect(body.state.messages.at(-1).text).toBe('current task')
+  const entry = ledgerOf(h.settings.stateDirectory!, `observed-${maxBodyBytes}`).at(-1)!
+  expect(entry).toMatchObject({ windowDropped: 2, budgetDropped: expected.dropped, dropped: 2 + expected.dropped, omittedCodePoints: prepared.omittedCodePoints })
+  expect(entry.budgetDropped).toBe(maxBodyBytes === 28000 ? 0 : expected.dropped)
+  if (maxBodyBytes === 2400) expect(expected.dropped).toBeGreaterThan(0)
+})
+
+it('shortens only the Jev projection and delivers intact long text to the main model', async () => {
+  const fetcher = answer({ answers: { route: { choice: 'low', confidence: 0.9, probabilities: { low: 0.8, medium: 0.1, high: 0.1 } } } })
+  const h = await harness(); cleanup.push(h.close)
+  const text = 'HEAD' + '汉'.repeat(5000) + 'TAIL'
+  await send(await h.create('intact-main', sol), text)
+  expect(h.errors).toEqual([])
+  const body = JSON.parse(String(fetcher.mock.calls[0]![1]?.body))
+  expect(Array.from(body.state.messages[0].text)).toHaveLength(1600)
+  expect(body.state.messages[0].text).toContain('[...omitted...]')
+  expect(JSON.stringify(h.adapter.requests[0]!.messages)).toContain(text)
+  expect(ledgerOf(h.settings.stateDirectory!, 'intact-main').at(-1)).toMatchObject({ windowDropped: 0, budgetDropped: 0, applyStatus: 'applied' })
+})
+
+it('counts budget failure reduction once, on the failed evaluation rather than its fallback', async () => {
+  const fetcher = answer({})
+  const h = await harness({ maxBodyBytes: 1000 }); cleanup.push(h.close)
+  const agent = await h.create('budget-failure-observed', sol)
+  const router = new JevRouter(h.ctx, (await import('../src/config.ts')).resolveConfig(h.settings))
+  const messages = Array.from({ length: 10 }, () => createUserMessage({
+    content: [{ type: 'text', text: 'x'.repeat(2000) }], source: { kind: 'user' },
+  }))
+  await router.main(agent, sol, messages, new AbortController().signal)
+  const entries = ledgerOf(h.settings.stateDirectory!, 'budget-failure-observed')
+  expect(fetcher).not.toHaveBeenCalled()
+  expect(entries.map(entry => entry.outcome)).toEqual(['failed', 'fallback'])
+  expect(entries[0]).toMatchObject({ windowDropped: 2, budgetDropped: 7, dropped: 9 })
+  const { summarizeLedger } = await import('../skills/dsh-jev-router-inspect/scripts/inspect.mjs')
+  expect(summarizeLedger(entries as Parameters<typeof summarizeLedger>[0])).toMatchObject({
+    shortenedEvaluations: 1,
+    evidenceReduction: { windowLimitedEvaluations: 1, budgetLimitedEvaluations: 1, textShortenedEvaluations: 1, unknownDropCauseEvaluations: 0 },
+    usage: { evaluations: 1, httpAttempts: 0, inputTokens: 0, gatewayCostUsd: 0 },
+  })
+})
+
 it('publishes the shared policy version', async () => {
   const h = await harness(); cleanup.push(h.close)
   const policy = JSON.parse(readFileSync(join(h.settings.stateDirectory!, '_policy.json'), 'utf8'))
