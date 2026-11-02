@@ -3,6 +3,8 @@ import { configurationUpdates, harness, send } from './harness.ts'
 import { buildModelCatalog } from '../../deepseek-harness/packages/api/session-controller/src/catalog.ts'
 import { resolveModelSelection, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session-title-llm'
+import type {} from '@deepseek-ai/dsh-compaction-basic'
 
 it('offers selector-only auto/jev and automatic effort without registering a generation adapter', async () => {
   const h = await harness(); cleanup.push(h.close)

@@ -79,6 +79,22 @@ export class JevRouter {
     this.ledger = new Ledger(config.stateDirectory, message => ctx.logger.warn(message))
   }
 
+  /** Restore a selector-owned selection before the loop freezes the step route. */
+  syncSelector(agent: Agent): void {
+    const proposed = agent.model.current() ?? optionsSelection(agent.options)
+    if (proposed === undefined) return
+    const state = this.inherit(agent, proposed)
+    const selection = automaticModel(state.selection)
+      ? { ...state.selection, reasoningEffort: AUTO_EFFORT }
+      : state.selection
+    if (!automaticModel(selection) && selection.reasoningEffort !== AUTO_EFFORT) return
+    agent.model.select({
+      provider: selection.provider,
+      model: selection.model,
+      ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(selection.reasoningEffort) },
+    })
+  }
+
   /** Apply every own selection event, including repeated auto/jev selections.
    * @param session - Session whose current selection is read.
    * @param initial - creation or first assembled selection.

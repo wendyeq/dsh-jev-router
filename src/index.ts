@@ -26,6 +26,7 @@ export function apply(ctx: Context, config: Config): void {
   const accepted = new WeakMap<Agent, readonly UserMessage[]>()
   const automatic = { id: AUTO_EFFORT, name: '自动' }
   ctx.on('llm/model-selector', (provider, model) => automaticModel({ provider, model }) ? true : undefined)
+  ctx.on('llm/effort-selector', (_provider, _model, effort) => effort === AUTO_EFFORT ? true : undefined)
   ctx.on('session/model-catalog', async next => {
     const catalog = await next()
     const groups = catalog.groups.map(group => ({
@@ -70,19 +71,7 @@ export function apply(ctx: Context, config: Config): void {
       return decision
     }
     accepted.set(agent, decision.messages)
-    const saved = router.store.read(agent.id)
-    const { provider, model, reasoningEffort } = agent.options
-    // A Session created on auto/jev carries no effort in its options; its intent is still automatic effort.
-    const initial = provider && model && (reasoningEffort === AUTO_EFFORT || automaticModel({ provider, model }))
-      ? { provider, model, reasoningEffort: AUTO_EFFORT }
-      : undefined
-    const selection = saved?.selection.reasoningEffort === AUTO_EFFORT
-      ? { provider: saved.selection.provider, model: saved.selection.model, reasoningEffort: AUTO_EFFORT }
-      : initial
-    if (selection && !agent.session.snapshotEvents().some(event => event.type === 'model/selection' && agent.session.isOwnSeq(event.seq))) {
-      agent.session.append('model/selection', selection)
-      if (saved) router.store.write(agent.id, { ...saved, afterSeq: agent.session.snapshotEvents().at(-1)!.seq })
-    }
+    router.syncSelector(agent)
     return decision
   }, { global: true, prepend: true })
   ctx.on('agent/request', async ({ agent, turn, step, signal }, next) => {

@@ -7,10 +7,11 @@ import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import LlmRuntime, { LlmAdapter, ReasoningEffortId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmCallConfig, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import type { ToolExecutor } from '@deepseek-ai/dsh-tools'
 import { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import * as router from '../src/index.ts'
 import type { Config } from '../src/config.ts'
@@ -76,6 +77,11 @@ export async function harness(config: Config = {}, persistenceRoot?: string) {
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  const executor: ToolExecutor = {
+    describe: tools => ({ schemas: tools, knownNames: tools.map(tool => tool.name) }),
+    execute: async () => ({ results: [], additionalContexts: [], concluded: false }),
+  }
+  ctx.tools.setExecutor(executor)
   await ctx.plugin(AgentRegistry)
   const root = persistenceRoot ?? join(directory, 'logs')
   await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
