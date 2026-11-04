@@ -1,10 +1,22 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import type { Context } from '@deepseek-ai/cordis'
 import { configurationUpdates, harness, send } from './harness.ts'
 import { buildModelCatalog } from '../../deepseek-harness/packages/api/session-controller/src/catalog.ts'
-import { resolveModelSelection, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { resolveModelSelection, isSelectorSelection, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-title-llm'
 import type {} from '@deepseek-ai/dsh-compaction-basic'
+
+it('exposes selector identities to another plugin fiber context', async () => {
+  const h = await harness(); cleanup.push(h.close)
+  let scoped: Context | undefined
+  await h.ctx.plugin({ name: 'selector-probe', apply: (ctx: Context) => { scoped = ctx } })
+  expect(scoped).toBeDefined()
+  expect(isSelectorSelection(scoped!, { provider: 'auto', model: 'jev' })).toBe(true)
+  expect(isSelectorSelection(scoped!, {
+    provider: 'x2046', model: 'gpt-6.1-sol', reasoningEffort: ReasoningEffortId('auto/jev'),
+  })).toBe(true)
+})
 
 it('offers selector-only auto/jev and automatic effort without registering a generation adapter', async () => {
   const h = await harness(); cleanup.push(h.close)

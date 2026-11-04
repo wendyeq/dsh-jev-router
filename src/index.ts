@@ -25,8 +25,8 @@ export function apply(ctx: Context, config: Config): void {
   writePolicy(settings, message => ctx.logger.warn(message))
   const accepted = new WeakMap<Agent, readonly UserMessage[]>()
   const automatic = { id: AUTO_EFFORT, name: '自动' }
-  ctx.on('llm/model-selector', (provider, model) => automaticModel({ provider, model }) ? true : undefined)
-  ctx.on('llm/effort-selector', (_provider, _model, effort) => effort === AUTO_EFFORT ? true : undefined)
+  ctx.on('llm/model-selector', (provider, model) => automaticModel({ provider, model }) ? true : undefined, { global: true })
+  ctx.on('llm/effort-selector', (_provider, _model, effort) => effort === AUTO_EFFORT ? true : undefined, { global: true })
   ctx.on('session/model-catalog', async next => {
     const catalog = await next()
     const groups = catalog.groups.map(group => ({
