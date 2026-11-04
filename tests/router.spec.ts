@@ -40,7 +40,7 @@ it.each([true, false])('child inherits its parent model and effort selection met
   const parent = await h.create('parent')
   if (!automatic) parent.session.append('model/selection', { provider: 'test', model: 'gpt-6.1-sol', reasoningEffort: ReasoningEffortId('medium') })
   await send(parent)
-  const child = (await h.ctx.agents.create({ sessionId: SessionId('child'), parentAgent: parent,
+  const child = (await h.ctx.agents.create({ sessionId: SessionId('child'),
     meta: { parentSession: parent.id }, agentOptions: parent.session.requestHeader()!.config })).agent
   await send(child)
   expect(h.errors).toEqual([])
@@ -54,7 +54,7 @@ it('child cannot select a model before its automatic parent has committed one', 
   const fetcher = vi.fn<typeof fetch>(); vi.stubGlobal('fetch', fetcher)
   const h = await harness(); cleanup.push(h.close)
   const parent = await h.create('parent')
-  const child = (await h.ctx.agents.create({ sessionId: SessionId('child'), parentAgent: parent,
+  const child = (await h.ctx.agents.create({ sessionId: SessionId('child'),
     meta: { parentSession: parent.id }, agentOptions: { provider: 'auto', model: 'jev' } })).agent
   await send(child)
   expect(h.errors.map(String)).toEqual([expect.stringContaining('parent has no session model')])
