@@ -10,7 +10,7 @@ import { createDeveloperMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmCallConfig, LlmModelInfo, LlmResolvedModelInfo, RequestMessage } from '@deepseek-ai/dsh-llm'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ResolvedConfig } from './config.ts'
-import { planEffortChange } from './effort.ts'
+import { planEffortChange, planExplicitEffort } from './effort.ts'
 import { classifyApplication, decideEffort, decideSingleCandidate, effortCriteria, fallbackEffort, prepareEvidence, unifiedEffortCandidates } from '../../jev-router-policy/src/index.ts'
 import type { EffortDecision } from '../../jev-router-policy/src/index.ts'
 import { EffortBudgetError, evaluate, evaluateUnifiedEffort, JevUnavailableError } from './jev.ts'
@@ -183,7 +183,7 @@ export class JevRouter {
         if (this.store.read(agent.id) === undefined) this.store.write(agent.id, state)
         return resolved
       }
-      return this.finish(agent, state, turn, step, { provider: selection.provider, model: selection.model }, selection.reasoningEffort, base, signal, log)
+      return this.finish(agent, state, turn, step, { provider: selection.provider, model: selection.model }, selection.reasoningEffort, base, signal, log, state.afterSeq, state.selection, true)
     }
     const requestRecord: RequestRecord = {
       directory: join(this.config.stateDirectory, 'requests'), sessionId: agent.session.id,
@@ -498,6 +498,7 @@ export class JevRouter {
    * @param log - optional diagnostic writer.
    * @param afterSeq - selection cursor captured before evaluation; defaults to `state`.
    * @param proposed - selection used to detect a concurrent change.
+   * @param explicit - the user selected this effort, so the call must carry it.
    * @returns the concrete call. Its effort is the request-level value.
    */
   private async finish(
@@ -512,8 +513,12 @@ export class JevRouter {
     log: ((message: string) => void) | undefined,
     afterSeq = state.afterSeq,
     proposed: Selection = state.selection,
+    explicit = false,
   ): Promise<LlmCallConfig> {
-    const plan = planEffortChange(state.effortWire, route, effort, agent.session.deriveMessages())
+    const history = agent.session.deriveMessages()
+    const plan = explicit
+      ? planExplicitEffort(route, effort, history)
+      : planEffortChange(state.effortWire, route, effort, history)
     const resolved = await this.ctx.llm.resolveCallConfig({
       ...base, ...route, reasoningEffort: ReasoningEffortId(plan.requestEffort),
     }, signal)

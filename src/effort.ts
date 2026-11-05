@@ -98,3 +98,28 @@ export function planEffortChange(
     wire: { ...wire, effectiveEffort: effort },
   }
 }
+
+/**
+ * Apply an effort the user already selected.
+ * The step froze that value, so the call carries it. A configuration update is
+ * recorded only when an older update would otherwise stay in force.
+ * @param route - concrete model this request will call.
+ * @param effort - effort selected for this request.
+ * @param history - durable history before this request's new user message is logged.
+ * @returns the selected effort as the new request-level value, and whether to override an older update.
+ */
+export function planExplicitEffort(
+  route: Route,
+  effort: string,
+  history: readonly RequestMessage[],
+): EffortChange {
+  const recorded = latestUpdate(history, route)
+  const append = recorded !== undefined && recorded !== effort && separated(history, route)
+  const effective = append || recorded === undefined || recorded === effort ? effort : recorded
+  return {
+    requestEffort: effort,
+    effectiveEffort: effective,
+    append,
+    wire: { ...route, requestEffort: effort, effectiveEffort: effective },
+  }
+}
